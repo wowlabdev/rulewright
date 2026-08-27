@@ -8,7 +8,7 @@ Rulewright is intentionally one publishable crate with both a library and CLI bi
 4. Adapters extract shared records for Rust-only and language-neutral workspace rules.
 5. Rayon executes file analysis in parallel; results are sorted before reporting.
 6. The cache keys executable content, Rulewright version, configuration, rule metadata, pack identity, source checksums, and workspace context.
-7. Fixes are conflict-checked, written atomically under `.rulewright.lock`, iterated to a bounded fixpoint, and completely reanalyzed.
+7. Fixes are conflict-checked and the complete edit batch is syntax-checked before writing. Each changed file is then replaced atomically under `.rulewright.lock`, the selected rules run to a bounded fixpoint, and the complete workspace is reanalyzed.
 
 ## Registry and packs
 

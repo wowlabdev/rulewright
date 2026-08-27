@@ -1,4 +1,4 @@
-use ra_ap_syntax::{AstNode, ast, syntax_editor::SyntaxEditor};
+use ra_ap_syntax::ast;
 
 use crate::{AstCtx, Example, Violation};
 
@@ -41,12 +41,11 @@ const EXAMPLES: &[Example] = &[
     },
 ];
 
-crate::ast_tree_rule!(
+crate::ast_rule!(
     println,
-    "Ban `println!`/`eprintln!`/`print!`/`eprint!` in library code.",
+    "Ban `println!`/`eprintln!`/`print!`/`eprint!` outside test code.",
     "Console printing bypasses structured logging. Use tracing or the output module for consistent, filterable output.",
     Medium,
-    fix_println,
 );
 
 const BANNED_MACROS: &[&str] = &["println", "eprintln", "print", "eprint"];
@@ -60,7 +59,9 @@ fn check_println(ctx: &AstCtx<'_>) -> Vec<Violation> {
             BANNED_MACROS.contains(&name.as_str()).then(|| {
                 ctx.violation(
                     &call,
-                    format!("{name}!() in library code (use tracing or return errors)"),
+                    format!(
+                        "{name}!() outside test code (use tracing, an explicit output abstraction, or returned errors)"
+                    ),
                 )
             })
         })
@@ -79,37 +80,16 @@ fn unqualified_macro_name(call: &ast::MacroCall) -> Option<String> {
         .map(|name| name.text().to_string())
 }
 
-// #rw(fn: rust_clone_in_loop) SyntaxEditor requires an owned deletion target per macro call
-fn fix_println(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
-    let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
-    let mut changed = false;
-
-    for call in root
-        .syntax()
-        .descendants()
-        .filter_map(ast::MacroCall::cast)
-        .filter(|call| !ctx.is_in_test(call))
-        .filter(|call| {
-            unqualified_macro_name(call).is_some_and(|name| BANNED_MACROS.contains(&name.as_str()))
-        })
-    {
-        let target = call
-            .syntax()
-            .parent()
-            .and_then(ast::ExprStmt::cast)
-            .map_or_else(
-                || call.syntax().clone(),
-                |statement| statement.syntax().clone(),
-            );
-
-        editor.delete(target);
-        changed = true;
-    }
-
-    changed.then(|| editor.finish().new_root().to_string())
-}
-
 crate::rulewright_ast_test!(check_println, {
     crate::example_tests!(EXAMPLES, check_println);
-    crate::fix_tests!(ast_tree, check_println, fix_println);
+
+    #[test]
+    fn rule_is_diagnostic_only() {
+        let rule = inventory::iter::<crate::Rule>
+            .into_iter()
+            .find(|rule| rule.info.name == "rust_println")
+            .expect("rust_println is registered");
+
+        assert!(rule.fix.is_none());
+    }
 });

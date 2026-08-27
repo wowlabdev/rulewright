@@ -29,7 +29,7 @@ fn analyze_selected(source: &str, selected: &[&str], fix_mode: bool) -> Analysis
         .map(|rule| rule.info.name)
         .collect();
 
-    analyze(&file, &rules, &registered, fix_mode)
+    analyze(&file, &rules, &registered, fix_mode, FileKind::Production)
 }
 
 #[gtest]
@@ -185,6 +185,7 @@ fn production() {}
         file: &file,
         root: &root,
         line_index: &line_index,
+        test_only_file: false,
     };
     let classification: BTreeMap<String, bool> = ctx
         .nodes::<ast::Fn>()

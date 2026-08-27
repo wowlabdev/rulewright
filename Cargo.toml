@@ -1,6 +1,6 @@
 [package]
 name = "rulewright"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.95"
 description = "Executable engineering standards for Rust workspaces"
@@ -41,8 +41,9 @@ console = "0.16"
 fs4 = { version = "1", features = ["sync"] }
 ref-cast = "1"
 gix = { version = "0.80", default-features = false, features = ["status"] }
-glob-match = "0.2"
+globset = "0.4"
 ignore = "0.4"
+imara-diff = "0.1"
 inventory = "0.3"
 line-index = "=0.1.2"
 paste = "1"

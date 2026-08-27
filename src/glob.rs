@@ -1,11 +1,24 @@
 #[cfg(test)]
 use googletest::prelude::*;
 
+fn compile(pattern: &str) -> Result<globset::GlobMatcher, globset::Error> {
+    globset::GlobBuilder::new(pattern)
+        .literal_separator(true)
+        .build()
+        .map(|glob| glob.compile_matcher())
+}
+
+pub(crate) fn validate(pattern: &str) -> Result<(), String> {
+    compile(pattern)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 /// Return `true` if the relative path matches any of the given glob patterns.
 pub(crate) fn matches_ignore(rel: &str, patterns: &[impl AsRef<str>]) -> bool {
     patterns
         .iter()
-        .any(|pat| glob_match::glob_match(pat.as_ref(), rel))
+        .any(|pattern| compile(pattern.as_ref()).is_ok_and(|matcher| matcher.is_match(rel)))
 }
 
 #[cfg(test)]
@@ -55,6 +68,36 @@ mod tests {
     }
 
     #[gtest]
+    fn split_test_module_patterns_match_root_and_nested_files() -> Result<()> {
+        let patterns = ["**/*_tests.rs", "**_tests.rs"];
+
+        verify_true!(matches_ignore("parser_tests.rs", &patterns))?;
+        verify_true!(matches_ignore(
+            "crates/example/src/parser_tests.rs",
+            &patterns
+        ))?;
+        verify_true!(matches_ignore(
+            "crates/evade-core/src/planning/prepared_hazards/retained_cache_tests.rs",
+            &patterns
+        ))?;
+
+        verify_false!(matches_ignore("crates/example/src/parser.rs", &patterns))
+    }
+
+    #[gtest]
+    fn nested_tests_and_workspace_members_match_recursively() -> Result<()> {
+        verify_true!(matches_ignore(
+            "crates/example/src/nested/tests.rs",
+            &["**/tests.rs"]
+        ))?;
+
+        verify_true!(matches_ignore(
+            "crates/evade-wasm-tests/src/lib.rs",
+            &["crates/evade-wasm-tests/**"]
+        ))
+    }
+
+    #[gtest]
     fn no_match() -> Result<()> {
         verify_false!(matches_ignore(
             "packages/service/src/lib.rs",
@@ -99,13 +142,20 @@ mod tests {
     }
 
     #[gtest]
-    fn backslashes_follow_native_path_semantics() -> Result<()> {
-        let matches = matches_ignore(r"packages\app\src\main.rs", &["packages/app/**"]);
+    fn normalized_paths_have_cross_platform_semantics() -> Result<()> {
+        verify_true!(matches_ignore(
+            "packages/app/src/main.rs",
+            &["packages/app/**"]
+        ))?;
 
-        if cfg!(windows) {
-            verify_true!(matches)
-        } else {
-            verify_false!(matches)
-        }
+        verify_false!(matches_ignore(
+            r"packages\app\src\main.rs",
+            &["packages/app/**"]
+        ))
+    }
+
+    #[gtest]
+    fn malformed_patterns_are_rejected() -> Result<()> {
+        verify_true!(validate("src/[unterminated.rs").is_err())
     }
 }

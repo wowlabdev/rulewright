@@ -74,17 +74,19 @@ crate::ast_rule!(
             "secret",
             "signing_key",
             "token",
-        ]
+        ],
+        allowed_fields: [String] = [],
     },
 );
 
 fn check_sensitive_debug(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let markers = sensitive_markers(ctx);
+    let allowed = allowed_fields(ctx);
 
     ctx.nodes::<ast::Struct>()
         .filter(|item| !ctx.is_in_test(item) && has_debug_derive(item))
         .filter_map(|item| {
-            let sensitive = find_sensitive_fields(&item, &markers);
+            let sensitive = find_sensitive_fields(&item, &markers, &allowed);
             let name = item.name()?;
 
             (!sensitive.is_empty()).then(|| {
@@ -98,6 +100,12 @@ fn check_sensitive_debug(ctx: &AstCtx<'_>) -> Vec<Violation> {
             })
         })
         .collect()
+}
+
+fn allowed_fields(ctx: &AstCtx<'_>) -> Vec<String> {
+    ctx.file
+        .config
+        .get_str_array("rust_sensitive_debug", &PARAMS[1])
 }
 
 fn sensitive_markers(ctx: &AstCtx<'_>) -> Vec<String> {
@@ -134,10 +142,14 @@ fn has_debug_derive(item: &ast::Struct) -> bool {
 }
 
 pub(crate) fn has_sensitive_fields(ctx: &AstCtx<'_>, item: &ast::Struct) -> bool {
-    !find_sensitive_fields(item, &sensitive_markers(ctx)).is_empty()
+    !find_sensitive_fields(item, &sensitive_markers(ctx), &allowed_fields(ctx)).is_empty()
 }
 
-fn find_sensitive_fields(item: &ast::Struct, markers: &[String]) -> Vec<String> {
+fn find_sensitive_fields(
+    item: &ast::Struct,
+    markers: &[String],
+    allowed: &[String],
+) -> Vec<String> {
     let Some(ast::FieldList::RecordFieldList(fields)) = item.field_list() else {
         return Vec::new();
     };
@@ -148,7 +160,7 @@ fn find_sensitive_fields(item: &ast::Struct, markers: &[String]) -> Vec<String> 
         .map(|name| name.text().to_string());
 
     names
-        .filter(|name| is_sensitive_field(name, markers))
+        .filter(|name| !allowed.contains(name) && is_sensitive_field(name, markers))
         .collect()
 }
 
@@ -165,5 +177,27 @@ crate::rulewright_ast_test!(check_sensitive_debug, {
         );
 
         verify_eq!(violations.len(), 1)
+    }
+
+    #[gtest]
+    fn exact_domain_fields_can_be_allowed_without_disabling_the_marker() -> Result<()> {
+        let source =
+            "#[derive(Debug)]\nstruct Topology { topology_token: String, access_token: String }";
+        let violations = crate::test_support::check_source_ast_params(
+            source,
+            "rust_sensitive_debug",
+            &[("allowed_fields", &["topology_token"])],
+            check_sensitive_debug,
+        );
+
+        verify_eq!(violations.len(), 1)?;
+        verify_that!(
+            violations[0].message.as_str(),
+            contains_substring("access_token")
+        )?;
+        verify_that!(
+            violations[0].message.as_str(),
+            not(contains_substring("topology_token"))
+        )
     }
 });

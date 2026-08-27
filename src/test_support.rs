@@ -81,6 +81,7 @@ fn check_workspace_sources_with_config(
             &file,
             &parse.tree(),
             suppressions,
+            false,
         ));
     }
 
@@ -119,6 +120,7 @@ pub(crate) fn check_workspace_member(
         &file,
         &parse.tree(),
         suppressions,
+        false,
     )];
     let manifests = [crate::languages::workspace::WorkspaceManifest {
         rel: format!("{member_dir}/Cargo.toml"),
@@ -198,6 +200,7 @@ pub(crate) fn check_source_ast_params(
         file: &file_ctx,
         root: &root,
         line_index: &line_index,
+        test_only_file: false,
     };
 
     check(&ast_ctx)
@@ -270,6 +273,7 @@ pub(crate) fn check_source_ast_at(
         file: &file_ctx,
         root: &root,
         line_index: &line_index,
+        test_only_file: false,
     };
 
     check(&ast_ctx)
@@ -394,6 +398,7 @@ pub(crate) fn apply_ast_fixes(
         file: &file_ctx,
         root: &root,
         line_index: &line_index,
+        test_only_file: false,
     };
     let violations = check(&ast_ctx);
     let fixes: Vec<Fix> = violations
@@ -428,6 +433,7 @@ pub(crate) fn apply_ast_tree_fix(
         file: &file_ctx,
         root: &root,
         line_index: &line_index,
+        test_only_file: false,
     };
     let violations = check(&ast_ctx);
 

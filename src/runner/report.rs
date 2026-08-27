@@ -1,7 +1,7 @@
 // #rw(file: rust_alloc_in_loop) violation report renderer
 // #rw(file: rust_default_hasher) trusted rule-name sets in the cold report path; fast-hasher dependency not warranted
 
-use std::{collections::BTreeMap, process::ExitCode};
+use std::{collections::BTreeMap, io::Write as _, process::ExitCode};
 
 use crate::output;
 use crate::{
@@ -225,7 +225,12 @@ pub(super) fn print_grouped(
         output::header(&format!("{package_name} ({} issues)", violations.len()));
 
         for v in violations {
-            output::error(&format!("{}:{}: {}", v.rel, v.line, v.message));
+            let location = v.column.map_or_else(
+                || format!("{}:{}", v.rel, v.line),
+                |column| format!("{}:{}:{column}", v.rel, v.line),
+            );
+
+            output::error(&format!("{location}: {}", v.message));
         }
 
         output::blank();
@@ -278,6 +283,103 @@ pub(super) fn print_grouped(
     }
 }
 
+#[derive(serde::Serialize)]
+struct FindingsDocument<'a> {
+    schema_version: u32,
+    findings: Vec<StructuredFinding<'a>>,
+}
+
+#[derive(serde::Serialize)]
+struct StructuredFinding<'a> {
+    id: String,
+    path: &'a str,
+    line: usize,
+    column: Option<usize>,
+    rule: &'a str,
+    severity: &'a str,
+    message: &'a str,
+    fixable: bool,
+}
+
+pub(super) fn print_json(violations: &[Violation], registry: &RuleRegistry) {
+    let findings = violations
+        .iter()
+        .map(|violation| {
+            let rule = registry
+                .rules()
+                .iter()
+                .copied()
+                .find(|rule| rule.info.name == violation.rule_name());
+
+            StructuredFinding {
+                id: finding_id(violation),
+                path: &violation.rel,
+                line: violation.line,
+                column: violation.column,
+                rule: violation.rule_name(),
+                severity: rule.map_or("unknown", |rule| rule.info.severity.as_str()),
+                message: &violation.message,
+                fixable: rule.is_some_and(|rule| rule.fix.is_some()),
+            }
+        })
+        .collect();
+    let document = FindingsDocument {
+        schema_version: 1,
+        findings,
+    };
+    let stdout = std::io::stdout();
+    let mut output = stdout.lock();
+
+    if serde_json::to_writer_pretty(&mut output, &document).is_ok() {
+        let _ = output.write_all(b"\n");
+    }
+}
+
+fn finding_id(violation: &Violation) -> String {
+    let mut hasher = blake3::Hasher::new();
+
+    for part in [
+        violation.rule_name().as_bytes(),
+        violation.rel.as_bytes(),
+        violation.message.as_bytes(),
+    ] {
+        hasher.update(&(part.len() as u64).to_le_bytes());
+        hasher.update(part);
+    }
+
+    hasher.finalize().to_hex().to_string()
+}
+
+#[cfg(test)]
+mod structured_tests {
+    use super::*;
+
+    #[test]
+    fn finding_ids_survive_line_and_column_movement() {
+        let original = crate::violation("src/lib.rs", 4, "finding")
+            .with_column(8)
+            .with_rule("rust_example");
+        let moved = crate::violation("src/lib.rs", 400, "finding")
+            .with_column(16)
+            .with_rule("rust_example");
+
+        assert_eq!(finding_id(&original), finding_id(&moved));
+    }
+
+    #[test]
+    fn finding_ids_distinguish_rules_paths_and_messages() {
+        let finding = crate::violation("src/lib.rs", 4, "finding").with_rule("rust_example");
+
+        for distinct in [
+            crate::violation("src/lib.rs", 4, "other").with_rule("rust_example"),
+            crate::violation("src/other.rs", 4, "finding").with_rule("rust_example"),
+            crate::violation("src/lib.rs", 4, "finding").with_rule("rust_other"),
+        ] {
+            assert_ne!(finding_id(&finding), finding_id(&distinct));
+        }
+    }
+}
+
 #[derive(Tabled)]
 #[tabled(crate = "tabled")]
 struct RuleSummaryRow {
@@ -298,10 +400,16 @@ pub(super) fn print_dry_run(fixes: &[(String, Fix)]) {
     }
 
     for (rel, file_fixes) in &by_file {
-        output::header(&format!("{rel} ({} fix(es))", file_fixes.len()));
+        output::header(&format!("{rel} ({} changed span(s))", file_fixes.len()));
 
         for f in file_fixes {
-            if f.replacement.is_empty() {
+            if f.start_line > f.end_line {
+                output::detail(&format!(
+                    "  insert {} line(s) at line {}",
+                    f.replacement.lines().count(),
+                    f.start_line
+                ));
+            } else if f.replacement.is_empty() {
                 output::detail(&format!("  delete lines {}-{}", f.start_line, f.end_line));
             } else {
                 let new_lines = f.replacement.lines().count();

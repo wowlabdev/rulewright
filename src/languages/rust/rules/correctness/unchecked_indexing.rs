@@ -21,7 +21,7 @@ const EXAMPLES: &[Example] = &[
     },
     Example {
         label: "with BOUNDS comment",
-        code: "fn f(v: Vec<i32>, i: usize) {\n    // BOUNDS: index validated by caller\n    let _ = v[i];\n}",
+        code: "fn f(v: Vec<i32>, i: usize) {\n    assert!(i < v.len());\n    // BOUNDS: the assertion above establishes i < v.len().\n    let _ = v[i];\n}",
         pass: true,
     },
 ];
@@ -29,8 +29,9 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     unchecked_indexing,
     "Flag `container[expr]` indexing with non-literal indices.",
-    "Indexing with a variable panics on out-of-bounds. Use .get() or add a // BOUNDS: comment explaining why the index is safe.",
+    "Indexing with a variable panics on out-of-bounds. Prefer `.get()` when failure is possible. When an established invariant makes indexing correct, place a `// BOUNDS:` comment directly above it that names the concrete check or relationship; boilerplate comments do not make the code safer.",
     Low,
+    default = false,
 );
 
 fn check_unchecked_indexing(ctx: &AstCtx<'_>) -> Vec<Violation> {
@@ -53,7 +54,7 @@ fn check_unchecked_indexing(ctx: &AstCtx<'_>) -> Vec<Violation> {
             .then(|| {
                 ctx.violation(
                     &expr,
-                    "unchecked indexing — prefer `.get()` or add `// BOUNDS:` comment",
+                    "unchecked indexing — prefer `.get()`, or document the concrete invariant directly above with `// BOUNDS:`",
                 )
             })
         })

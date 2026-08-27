@@ -105,7 +105,7 @@ enabled = true
 ignore = []
 
 [rules.rust_clone_in_loop]
-enabled = true
+enabled = false
 ignore = []
 
 [rules.rust_closure_dense_method_chain]
@@ -600,6 +600,7 @@ markers = [
   "signing_key",
   "token",
 ]
+allowed_fields = []
 
 [rules.rust_similar_fns]
 enabled = true

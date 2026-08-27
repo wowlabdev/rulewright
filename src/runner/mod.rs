@@ -3,6 +3,7 @@
 
 //! Rule execution, caching, reporting, fixing, and suppression cleanup.
 
+mod baseline;
 mod cache;
 mod clean;
 mod report;
@@ -15,7 +16,7 @@ use crate::{
     path::{Path, PathBuf},
 };
 use rayon::prelude::*;
-use report::{print_dry_run, print_grouped};
+use report::{print_dry_run, print_grouped, print_json};
 
 use crate::{
     Config, FileCtx, Fix, Rule, RuleRegistry, Violation,
@@ -43,8 +44,19 @@ type CollectedAnalysis = (
     Vec<TreeFix>,
     fix::SourceSnapshots,
 );
+struct FixPlan {
+    fixes: Vec<(String, Fix)>,
+    tree_fixes: Vec<TreeFix>,
+    snapshots: fix::SourceSnapshots,
+}
 type AnalysisResult = Result<CollectedAnalysis, AnalysisError>;
 type FileAnalysis = Result<Option<FileResult>, String>;
+struct AnalysisDispatch<'a> {
+    rules: &'a [&'static Rule],
+    registered_names: &'a HashSet<&'a str>,
+    collect_fixes: bool,
+    test_only_files: &'a HashSet<String>,
+}
 type CollectedResults = (
     Vec<Violation>,
     Vec<(String, Fix)>,
@@ -114,6 +126,14 @@ pub enum FixMode {
     DryRun,
 }
 
+/// Findings output selected by the CLI or an embedding rule pack.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ReportFormat {
+    #[default]
+    Human,
+    Json,
+}
+
 /// Inputs needed by `run` and `collect_violations`.
 #[derive(Debug)]
 pub struct RunCtx<'a> {
@@ -128,9 +148,15 @@ pub struct RunCtx<'a> {
     pub dirty: bool,
 }
 
-/// Run rulewright rules with human-readable terminal output. Returns `true` if clean.
+/// Run Rulewright rules with the selected findings output. Returns `true` if clean.
 #[must_use]
-pub fn run(ctx: &RunCtx<'_>, fix: FixMode) -> bool {
+pub fn run(
+    ctx: &RunCtx<'_>,
+    fix: FixMode,
+    format: ReportFormat,
+    baseline_path: Option<&Path>,
+    write_baseline_path: Option<&Path>,
+) -> bool {
     let total = enabled_rules(ctx).len();
 
     if total == 0 {
@@ -141,13 +167,13 @@ pub fn run(ctx: &RunCtx<'_>, fix: FixMode) -> bool {
         return false;
     }
 
-    if !ctx.quiet {
+    if !ctx.quiet && format == ReportFormat::Human {
         output::detail(&format!("running {total} rule(s)"));
         output::blank();
     }
 
     let collect_fixes = !matches!(fix, FixMode::Off);
-    let (all_violations, fixes, tree_fixes, snapshots) =
+    let (mut all_violations, fixes, tree_fixes, snapshots) =
         match collect_violations(ctx, collect_fixes, None) {
             Ok(result) => result,
             Err(error) => {
@@ -159,19 +185,70 @@ pub fn run(ctx: &RunCtx<'_>, fix: FixMode) -> bool {
             }
         };
 
+    if let Some(path) = write_baseline_path {
+        return match baseline::write(path, &all_violations) {
+            Ok(()) => {
+                if !ctx.quiet {
+                    output::success(&format!(
+                        "wrote {} finding(s) to {}",
+                        all_violations.len(),
+                        path.display()
+                    ));
+                    output::blank();
+                }
+
+                true
+            }
+            Err(error) => {
+                if !ctx.quiet {
+                    output::error(&error.to_string());
+                }
+
+                false
+            }
+        };
+    }
+
+    if let Some(path) = baseline_path {
+        all_violations = match baseline::filter(path, all_violations) {
+            Ok(violations) => violations,
+            Err(error) => {
+                if !ctx.quiet {
+                    output::error(&error.to_string());
+                }
+
+                return false;
+            }
+        };
+    }
+
     if collect_fixes && (!fixes.is_empty() || !tree_fixes.is_empty()) {
-        return apply_and_verify(ctx, fix, fixes, tree_fixes, snapshots, total);
+        return apply_and_verify(
+            ctx,
+            fix,
+            FixPlan {
+                fixes,
+                tree_fixes,
+                snapshots,
+            },
+            total,
+            format,
+        );
     }
 
     if all_violations.is_empty() {
-        if !ctx.quiet {
+        if format == ReportFormat::Json {
+            print_json(&[], ctx.registry);
+        } else if !ctx.quiet {
             output::success(&format!("all {total} rule(s) passed"));
             output::blank();
         }
 
         true
     } else {
-        if !ctx.quiet {
+        if format == ReportFormat::Json {
+            print_json(&all_violations, ctx.registry);
+        } else if !ctx.quiet {
             print_grouped(&all_violations, ctx.registry, ctx.packages, ctx.root);
         }
 
@@ -195,33 +272,28 @@ fn enabled_rules(ctx: &RunCtx<'_>) -> Vec<&'static Rule> {
 fn apply_and_verify(
     ctx: &RunCtx<'_>,
     fix: FixMode,
-    mut fixes: Vec<(String, Fix)>,
-    mut tree_fixes: Vec<TreeFix>,
-    mut snapshots: fix::SourceSnapshots,
+    plan: FixPlan,
     total: usize,
+    format: ReportFormat,
 ) -> bool {
+    let FixPlan {
+        mut fixes,
+        mut tree_fixes,
+        mut snapshots,
+    } = plan;
+
     if matches!(fix, FixMode::DryRun) {
         if !ctx.quiet {
+            let initial_edits = fixes.len() + tree_fixes.len();
             let mut previews = fixes;
 
-            for tree_fix in tree_fixes {
-                let line_count = file::read_text(&ctx.root.join(&tree_fix.rel))
-                    .map_or(1, |contents| contents.lines().count().max(1));
-
-                previews.push((
-                    tree_fix.rel,
-                    Fix {
-                        start_line: 1,
-                        end_line: line_count,
-                        replacement: tree_fix.replacement,
-                    },
-                ));
+            for tree_fix in &tree_fixes {
+                previews.extend(tree_fix_previews(ctx.root, tree_fix));
             }
 
             print_dry_run(&previews);
             output::detail(&format!(
-                "{} fix(es) would be applied (dry run, no files changed)",
-                previews.len()
+                "{initial_edits} initial edit(s) planned (dry run, no files changed; fixpoint passes may discover more)"
             ));
             output::blank();
         }
@@ -270,7 +342,9 @@ fn apply_and_verify(
             };
 
         if remaining.is_empty() {
-            if !ctx.quiet {
+            if format == ReportFormat::Json {
+                print_json(&[], ctx.registry);
+            } else if !ctx.quiet {
                 output::success(&format!("applied {applied_total} fix(es)"));
                 output::blank();
                 output::success(&format!("all {total} rule(s) passed after fixes"));
@@ -281,7 +355,9 @@ fn apply_and_verify(
         }
 
         if next_fixes.is_empty() && next_tree_fixes.is_empty() {
-            if !ctx.quiet {
+            if format == ReportFormat::Json {
+                print_json(&remaining, ctx.registry);
+            } else if !ctx.quiet {
                 output::success(&format!("applied {applied_total} fix(es)"));
                 output::blank();
                 print_grouped(&remaining, ctx.registry, ctx.packages, ctx.root);
@@ -291,7 +367,9 @@ fn apply_and_verify(
         }
 
         if applied == 0 {
-            if !ctx.quiet {
+            if format == ReportFormat::Json {
+                print_json(&remaining, ctx.registry);
+            } else if !ctx.quiet {
                 output::error("fix conflict: fixable violations remain but no edit made progress");
                 print_grouped(&remaining, ctx.registry, ctx.packages, ctx.root);
             }
@@ -315,12 +393,57 @@ fn apply_and_verify(
         }
     };
 
-    if !ctx.quiet {
+    if format == ReportFormat::Json {
+        print_json(&remaining, ctx.registry);
+    } else if !ctx.quiet {
         output::error("fix conflict: reached the 10-iteration fixpoint cap");
         print_grouped(&remaining, ctx.registry, ctx.packages, ctx.root);
     }
 
     false
+}
+
+fn tree_fix_previews(root: &Path, tree_fix: &TreeFix) -> Vec<(String, Fix)> {
+    use imara_diff::{Algorithm, diff, intern::InternedInput};
+
+    let original = file::read_text(&root.join(&tree_fix.rel)).unwrap_or_default();
+    let input = InternedInput::new(original.as_str(), tree_fix.replacement.as_str());
+    let mut changes = Vec::new();
+
+    diff(Algorithm::Histogram, &input, |before, after| {
+        changes.push((before, after));
+    });
+
+    changes
+        .into_iter()
+        .map(|(before, after)| {
+            let start_line = before.start as usize + 1;
+            let end_line = before.end as usize;
+            let inserted_lines = (after.end - after.start) as usize;
+            // BOUNDS: imara-diff produces each `after` range from `input.after`.
+            let mut replacement = input.after[after.start as usize..after.end as usize]
+                .iter()
+                .map(|token| {
+                    // BOUNDS: every token in `input.after` was allocated by this interner.
+                    input.interner[*token]
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if replacement.is_empty() && inserted_lines > 0 {
+                replacement = "\n".repeat(inserted_lines);
+            }
+
+            (
+                tree_fix.rel.clone(),
+                Fix {
+                    start_line,
+                    end_line,
+                    replacement,
+                },
+            )
+        })
+        .collect()
 }
 
 /// Walk the target workspace in parallel and collect all violations and optional fixes.
@@ -344,6 +467,7 @@ pub(crate) fn collect_violations(
     extensions.dedup();
 
     let (paths, target_rels) = analysis_paths(ctx, paths_override, &extensions)?;
+    let test_only_files = languages::rust::test_files::discover(&paths, ctx.root);
     let registered_names: HashSet<&str> = ctx
         .registry
         .rules()
@@ -361,14 +485,13 @@ pub(crate) fn collect_violations(
         return Ok(result);
     }
 
-    let analyzed = analyze_paths(
-        &paths,
-        cache.as_ref(),
-        ctx,
-        &rules,
-        &registered_names,
-        fix_mode,
-    );
+    let dispatch = AnalysisDispatch {
+        rules: &rules,
+        registered_names: &registered_names,
+        collect_fixes: fix_mode,
+        test_only_files: &test_only_files,
+    };
+    let analyzed = analyze_paths(&paths, cache.as_ref(), ctx, &dispatch);
     let results = require_complete_analysis(analyzed)?;
 
     persist_file_cache(cache.as_ref(), ctx.root, &results);
@@ -429,18 +552,16 @@ fn analyze_paths(
     paths: &[PathBuf],
     cache: Option<&cache::Session>,
     ctx: &RunCtx<'_>,
-    rules: &[&'static Rule],
-    registered_names: &HashSet<&str>,
-    fix_mode: bool,
+    dispatch: &AnalysisDispatch<'_>,
 ) -> Vec<FileAnalysis> {
     paths
         .par_iter()
         .map(|path| {
-            if let Some(result) = cache.and_then(|cache| cache.restore(path, rules)) {
+            if let Some(result) = cache.and_then(|cache| cache.restore(path, dispatch.rules)) {
                 return Ok(Some(result));
             }
 
-            analyze_path(path, ctx, rules, registered_names, fix_mode)
+            analyze_path(path, ctx, dispatch)
         })
         .collect()
 }
@@ -544,13 +665,7 @@ fn analysis_paths(
     Ok((paths, Some(target_rels)))
 }
 
-fn analyze_path(
-    path: &Path,
-    ctx: &RunCtx<'_>,
-    rules: &[&'static Rule],
-    registered_names: &HashSet<&str>,
-    fix_mode: bool,
-) -> FileAnalysis {
+fn analyze_path(path: &Path, ctx: &RunCtx<'_>, dispatch: &AnalysisDispatch<'_>) -> FileAnalysis {
     let rel = relative_path(path, ctx.root).map_err(|error| error.to_string())?;
     let contents = file::read_text(path).map_err(|error| format!("{rel}: {error}"))?;
     let lines: Vec<&str> = contents.lines().collect();
@@ -563,8 +678,18 @@ fn analyze_path(
         config: ctx.config,
     };
     let analysis = match path.extension().and_then(|extension| extension.to_str()) {
-        Some("rs") => languages::rust::analyze(&file, rules, registered_names, fix_mode),
-        Some("toml") => languages::toml::analyze(&file, rules, fix_mode),
+        Some("rs") => languages::rust::analyze(
+            &file,
+            dispatch.rules,
+            dispatch.registered_names,
+            dispatch.collect_fixes,
+            if dispatch.test_only_files.contains(&rel) {
+                languages::rust::FileKind::TestOnly
+            } else {
+                languages::rust::FileKind::Production
+            },
+        ),
+        Some("toml") => languages::toml::analyze(&file, dispatch.rules, dispatch.collect_fixes),
         _ => return Ok(None),
     };
 
@@ -772,6 +897,58 @@ mod tests {
                 ("same.rs", 1, "z_rule", "second"),
             ]
         )
+    }
+
+    #[gtest]
+    fn tree_fix_preview_reports_only_the_changed_hunks() -> Result<()> {
+        let directory = crate::temporary::Directory::new().or_fail()?;
+        let source = directory.path().join("src/lib.rs");
+
+        crate::directory::ensure(source.parent().or_fail()?).or_fail()?;
+        file::write_text(&source, "first\nsecond\nthird\nfourth\n").or_fail()?;
+        let previews = tree_fix_previews(
+            directory.path(),
+            &TreeFix {
+                rel: "src/lib.rs".to_owned(),
+                rule: "rust_fixture",
+                replacement: "first\nchanged\nthird\nchanged again\n".to_owned(),
+            },
+        );
+        let spans: Vec<_> = previews
+            .iter()
+            .map(|(_, preview)| {
+                (
+                    preview.start_line,
+                    preview.end_line,
+                    preview.replacement.as_str(),
+                )
+            })
+            .collect();
+
+        verify_eq!(spans, [(2, 2, "changed"), (4, 4, "changed again")])
+    }
+
+    #[gtest]
+    fn tree_fix_preview_counts_inserted_blank_lines() -> Result<()> {
+        let directory = crate::temporary::Directory::new().or_fail()?;
+        let source = directory.path().join("src/lib.rs");
+
+        crate::directory::ensure(source.parent().or_fail()?).or_fail()?;
+        file::write_text(&source, "first\nsecond\n").or_fail()?;
+        let previews = tree_fix_previews(
+            directory.path(),
+            &TreeFix {
+                rel: "src/lib.rs".to_owned(),
+                rule: "rust_fixture",
+                replacement: "first\n\nsecond\n".to_owned(),
+            },
+        );
+        let (_, preview) = previews.first().or_fail()?;
+
+        verify_eq!(preview.start_line, 2)?;
+        verify_eq!(preview.end_line, 1)?;
+
+        verify_eq!(preview.replacement.lines().count(), 1)
     }
 
     #[gtest]
@@ -993,6 +1170,47 @@ mod tests {
     }
 
     #[gtest]
+    fn cfg_test_path_modules_are_classified_before_rule_dispatch() -> Result<()> {
+        let directory = crate::temporary::Directory::new().or_fail()?;
+        let source_dir = directory.path().join("src");
+
+        crate::directory::ensure(&source_dir).or_fail()?;
+        file::write_text(
+            &source_dir.join("lib.rs"),
+            "#[cfg(test)]\n#[path = \"validation.rs\"]\nmod tests;\n",
+        )
+        .or_fail()?;
+        file::write_text(
+            &source_dir.join("validation.rs"),
+            "fn fixture() -> usize { 42 }\n",
+        )
+        .or_fail()?;
+        let registry = RuleRegistry::with_builtins().or_fail()?;
+        let metadata = registry.metadata();
+        let config = Config::generate_default(
+            &metadata
+                .iter()
+                .map(|rule| (rule.name, rule.params))
+                .collect::<Vec<_>>(),
+        );
+        let rule_filter = vec!["rust_magic_numbers".to_owned()];
+        let ctx = RunCtx {
+            registry: &registry,
+            rule_filter: &rule_filter,
+            package_filter: &[],
+            packages: &[],
+            config: &config,
+            root: directory.path(),
+            workspace_root: directory.path(),
+            quiet: true,
+            dirty: false,
+        };
+        let (violations, _, _, _) = collect_violations(&ctx, false, None).or_fail()?;
+
+        verify_true!(violations.is_empty())
+    }
+
+    #[gtest]
     fn package_filtered_analysis_retains_complete_workspace_context() -> Result<()> {
         let directory = crate::temporary::Directory::new().or_fail()?;
         let workspace_root = directory.path().join("crates");
@@ -1074,7 +1292,7 @@ mod tests {
             dirty: false,
         };
 
-        verify_false!(run(&ctx, FixMode::Apply))?;
+        verify_false!(run(&ctx, FixMode::Apply, ReportFormat::Human, None, None,))?;
 
         let fixed = file::read_text(&fixable).or_fail()?;
 

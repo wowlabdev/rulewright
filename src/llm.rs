@@ -177,6 +177,17 @@ fn render_alignment_guide(doc: Doc) -> Doc {
         .blank()
 }
 
+fn render_finding_guide(doc: Doc) -> Doc {
+    doc.h2("How to use findings")
+        .blank()
+        .line("Treat a finding as a request to improve the engineering property described by the rule, not as a score to reduce by changing the spelling. Read the justification and examples before editing.")
+        .blank()
+        .line("Do not hide a finding behind an identity macro, an alias, a meaningless constant or comment, a physical-file rename, or another compliance-only wrapper. If the obvious rewrite does not make the code clearer or safer, tune the rule's parameters or path scope, add a suppression with the actual reason, or use an adoption baseline for existing debt.")
+        .blank()
+        .line("Most rules intentionally have no automatic fix. Make the smallest change that improves the code, then rerun the focused rule and the repository's normal compile, test, and formatting gates.")
+        .blank()
+}
+
 fn render_violations(mut doc: Doc, violations: &[Violation]) -> Doc {
     if violations.is_empty() {
         return doc.line("No violations found.").blank();
@@ -233,6 +244,7 @@ pub fn print(ctx: &runner::RunCtx<'_>) -> ExitCode {
         .blank();
 
     doc = render_alignment_guide(doc);
+    doc = render_finding_guide(doc);
 
     let severity_table = Table::new()
         .headers(["Severity", "Meaning"])

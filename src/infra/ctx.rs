@@ -15,17 +15,26 @@ pub struct FileCtx<'a> {
 }
 
 /// A single lint violation reported by a rule against a file location.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct Violation {
     pub rel: String,
     pub line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<usize>,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rule: Option<&'static str>,
 }
 
 impl Violation {
     pub(crate) fn with_rule(mut self, rule: &'static str) -> Self {
         self.rule = Some(rule);
+
+        self
+    }
+
+    pub(crate) fn with_column(mut self, column: usize) -> Self {
+        self.column = Some(column);
 
         self
     }
@@ -42,6 +51,7 @@ pub fn violation(rel: &str, line: usize, msg: impl Into<String>) -> Violation {
     Violation {
         rel: rel.to_string(),
         line,
+        column: None,
         message: msg.into(),
         rule: None,
     }

@@ -112,6 +112,50 @@ ignore = ["@nonexistent"]
 }
 
 #[gtest]
+fn malformed_literal_ignore_pattern_is_error() -> Result<()> {
+    let raw: RawConfig = toml::from_str(
+        r#"
+[rules.panic]
+enabled = true
+ignore = ["src/[unterminated.rs"]
+"#,
+    )
+    .or_fail()?;
+    let error = Config::resolve(raw).unwrap_err();
+
+    verify_that!(
+        error,
+        displays_as(all![
+            contains_substring("invalid ignore pattern"),
+            contains_substring("src/[unterminated.rs")
+        ])
+    )
+}
+
+#[gtest]
+fn malformed_pattern_in_glob_set_is_error_even_before_use() -> Result<()> {
+    let raw: RawConfig = toml::from_str(
+        r#"
+[glob_sets]
+tests = ["src/[unterminated.rs"]
+
+[rules.panic]
+enabled = true
+"#,
+    )
+    .or_fail()?;
+    let error = Config::resolve(raw).unwrap_err();
+
+    verify_that!(
+        error,
+        displays_as(all![
+            contains_substring("glob set `tests`"),
+            contains_substring("invalid pattern")
+        ])
+    )
+}
+
+#[gtest]
 fn no_ignore_is_fine() -> Result<()> {
     let cfg = parse(
         r"
@@ -251,13 +295,17 @@ fn generate_default_includes_all_rules() -> Result<()> {
 }
 
 #[gtest]
-fn registry_defaults_leave_opt_in_rules_disabled() -> Result<()> {
+fn generated_config_preserves_registry_defaults() -> Result<()> {
     let metadata = crate::RuleRegistry::with_builtins().or_fail()?.metadata();
     let cfg = Config::generate_registry_default(&metadata);
 
-    verify_false!(cfg.is_enabled("rust_mutex_in_async"))?;
+    verify_that!(cfg.rules.len(), eq(metadata.len()))?;
 
-    verify_true!(cfg.is_enabled("rust_dbg"))
+    for rule in metadata {
+        verify_that!(cfg.is_enabled(rule.name), eq(rule.default_enabled))?;
+    }
+
+    Ok(())
 }
 
 #[gtest]

@@ -106,8 +106,10 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     magic_numbers,
-    "Flag unnamed numeric literals — extract into named constants.",
-    "Unnamed numeric literals obscure intent. Named constants make code self-documenting and easier to update.",
+    "Flag numeric literals outside the configured allowlist for review.",
+    "Unnamed numeric literals can obscure intent. Use a named constant when its name explains the value; otherwise tune the allowlist or scope to match the project's policy.",
+    Low,
+    default = false,
     params {
         allowed: [String] = ["0", "1", "0.0", "1.0"]
     },
@@ -137,33 +139,28 @@ fn check_magic_numbers(ctx: &AstCtx<'_>) -> Vec<Violation> {
                             .and_then(ast::PrefixExpr::cast)
                             .expect("negated literal has a prefix expression");
 
-                        ctx.violation(
-                            &prefix,
-                            format!("magic number `-{digits}` — extract into a named constant"),
-                        )
+                        ctx.violation(&prefix, review_message(&format!("-{digits}")))
                     })
                 } else {
-                    (!allowed.iter().any(|allowed| allowed == &digits)).then(|| {
-                        ctx.violation(
-                            &literal,
-                            format!("magic number `{digits}` — extract into a named constant"),
-                        )
-                    })
+                    (!allowed.iter().any(|allowed| allowed == &digits))
+                        .then(|| ctx.violation(&literal, review_message(&digits)))
                 }
             }
             LiteralKind::FloatNumber(number) => {
                 let digits = number.value_string();
 
-                (!allowed.iter().any(|allowed| allowed == &digits)).then(|| {
-                    ctx.violation(
-                        &literal,
-                        format!("magic number `{digits}` — extract into a named constant"),
-                    )
-                })
+                (!allowed.iter().any(|allowed| allowed == &digits))
+                    .then(|| ctx.violation(&literal, review_message(&digits)))
             }
             _ => None,
         })
         .collect()
+}
+
+fn review_message(number: &str) -> String {
+    format!(
+        "numeric literal `{number}` is outside the configured allowlist — name it only when the name adds meaning; otherwise tune or justify the rule"
+    )
 }
 
 fn is_pattern_literal(literal: &ast::Literal) -> bool {

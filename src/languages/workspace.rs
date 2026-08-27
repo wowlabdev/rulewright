@@ -78,14 +78,16 @@ pub(crate) fn extract(
     file: &FileCtx<'_>,
     root: &ast::SourceFile,
     suppressions: Suppressions,
+    test_only_file: bool,
 ) -> WorkspaceRustFile {
     let crate_roots = crate_roots(root);
 
-    if file
-        .contents
-        .lines()
-        .take(GENERATED_HEADER_LINES)
-        .any(|line| line.contains("@generated"))
+    if test_only_file
+        || file
+            .contents
+            .lines()
+            .take(GENERATED_HEADER_LINES)
+            .any(|line| line.contains("@generated"))
     {
         return WorkspaceRustFile {
             rel: file.rel.to_owned(),
@@ -283,6 +285,14 @@ fn crate_roots(root: &ast::SourceFile) -> HashSet<String> {
                 .map(|name| name.text().trim_start_matches("r#").to_owned())
         })
         .collect();
+
+    roots.extend(
+        root.syntax()
+            .descendants()
+            .filter_map(ast::ExternCrate::cast)
+            .filter_map(|item| item.name_ref())
+            .map(|name| name.text().trim_start_matches("r#").to_owned()),
+    );
 
     let tokens: Vec<_> = root
         .syntax()

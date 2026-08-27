@@ -30,6 +30,12 @@ pub(crate) enum ApplyError {
     },
     #[error("{0} contains mixed or unsupported line endings; no fixes were applied")]
     MixedLineEndings(PathBuf),
+    #[error("fixes would make {path} invalid {language}: {message}; no fixes were applied")]
+    InvalidSyntax {
+        path: PathBuf,
+        language: &'static str,
+        message: String,
+    },
 }
 
 /// An auto-fix: replace a line range with new text.
@@ -98,6 +104,7 @@ pub(crate) fn apply_fixes(
     validate_line_fix_plan(&by_file, &sources, root)?;
 
     let mut total = 0;
+    let mut replacements = Vec::new();
 
     for (rel, mut file_fixes) in by_file {
         let path = root.join(rel);
@@ -143,8 +150,13 @@ pub(crate) fn apply_fixes(
             output.push_str(newline);
         }
 
-        atomic::replace(&path, output.as_bytes())?;
+        validate_syntax(&path, contents, &output)?;
+        replacements.push((path, output));
         total += file_total;
+    }
+
+    for (path, replacement) in replacements {
+        atomic::replace(&path, replacement.as_bytes())?;
     }
 
     Ok(total)
@@ -169,7 +181,7 @@ pub(crate) fn apply_tree_fixes(
         line_ending(contents, &path)?;
     }
 
-    let mut total = 0;
+    let mut replacements = Vec::with_capacity(fixes.len());
 
     for fix in fixes {
         let path = root.join(&fix.rel);
@@ -178,11 +190,53 @@ pub(crate) fn apply_tree_fixes(
         };
         let replacement = with_line_ending(&fix.replacement, line_ending(contents, &path)?);
 
-        atomic::replace(&path, replacement.as_bytes())?;
-        total += 1;
+        validate_syntax(&path, contents, &replacement)?;
+        replacements.push((path, replacement));
     }
 
-    Ok(total)
+    for (path, replacement) in replacements {
+        atomic::replace(&path, replacement.as_bytes())?;
+    }
+
+    Ok(fixes.len())
+}
+
+fn validate_syntax(path: &Path, original: &str, replacement: &str) -> Result<(), ApplyError> {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("rs") => {
+            let original =
+                ra_ap_syntax::SourceFile::parse(original, ra_ap_syntax::Edition::Edition2024);
+
+            if !original.errors().is_empty() {
+                return Ok(());
+            }
+
+            let parsed =
+                ra_ap_syntax::SourceFile::parse(replacement, ra_ap_syntax::Edition::Edition2024);
+
+            if let Some(error) = parsed.errors().first() {
+                return Err(ApplyError::InvalidSyntax {
+                    path: path.to_path_buf(),
+                    language: "Rust",
+                    message: error.to_string(),
+                });
+            }
+        }
+        Some("toml") => {
+            if toml::from_str::<toml::Value>(original).is_ok()
+                && let Err(error) = toml::from_str::<toml::Value>(replacement)
+            {
+                return Err(ApplyError::InvalidSyntax {
+                    path: path.to_path_buf(),
+                    language: "TOML",
+                    message: error.to_string(),
+                });
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 fn verified_sources<'a>(
@@ -281,6 +335,10 @@ fn with_line_ending(contents: &str, newline: &str) -> String {
         normalized.replace('\n', newline)
     }
 }
+
+#[cfg(test)]
+#[path = "fix_validation_tests.rs"]
+mod validation_tests;
 
 #[cfg(test)]
 mod tests {

@@ -128,4 +128,14 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn extern_crate_counts_as_a_direct_reference() -> Result<()> {
+        let violations = run(
+            "#[cfg(feature = \"wasm\")] extern crate wasm_bindgen;",
+            "wasm-bindgen",
+        );
+
+        verify_true!(violations.is_empty())
+    }
 }

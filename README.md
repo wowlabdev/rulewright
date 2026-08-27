@@ -1,6 +1,6 @@
 # Rulewright
 
-Rulewright turns repository engineering standards into executable rules for Rust workspaces. It runs alongside rustfmt and Clippy and covers the project-level decisions they cannot know about: API shape, module structure, documentation, Cargo policy, cross-file patterns, suppressions, and verified autofixes.
+Rulewright turns repository engineering standards into executable rules for Rust workspaces. It runs alongside rustfmt and Clippy and covers the project-level decisions they cannot know about: API shape, module structure, documentation, Cargo policy, cross-file patterns, suppressions, and mechanical autofixes.
 
 The built-in catalog covers generic Rust and Cargo/TOML policy. Browse the generated [rule catalog](RULES.md), the [Rust rules](src/languages/rust/rules), or the [Cargo/TOML rules](src/languages/toml/rules). Rulewright is an independent project and is not affiliated with the Rust Project, Cargo, Clippy, or rust-analyzer.
 
@@ -26,7 +26,7 @@ Then run these commands anywhere inside a Cargo root package or workspace:
 
 ```console
 rulewright --init
-rulewright --strict
+rulewright check --strict
 ```
 
 `--init` creates a complete `rulewright.toml` without replacing an existing file. Rulewright finds the workspace through Cargo metadata, honors `.gitignore` and `.rulewrightignore`, and works with root packages, virtual workspaces, and nested members. The [configuration guide](docs/configuration.md) covers explicit roots, custom configuration paths, package filters, and ignore behavior.
@@ -36,17 +36,22 @@ rulewright --strict
 ```console
 rulewright --list
 rulewright --detail rust_panic
-rulewright --rule rust_panic --dirty
-rulewright --filter my-package --strict
+rulewright check --rule rust_panic --dirty
+rulewright check --filter my-package --strict
+rulewright check --format json
 rulewright --fix --dry-run
 rulewright --fix
+rulewright --write-baseline rulewright-baseline.json
+rulewright check --baseline rulewright-baseline.json
 rulewright --suppressions
 rulewright clean --dry-run
 rulewright --llm > rulewright-report.md
 rulewright --ci --strict
 ```
 
-`--dirty` limits source analysis to Git changes while retaining the workspace context needed by cross-file rules. `--fix --dry-run` previews safe fixes. `--ci` runs Rulewright, rustfmt, and Clippy as one local gate. Run `rulewright --help` for the complete CLI.
+`--dirty` limits source analysis to Git changes while retaining the workspace context needed by cross-file rules. `--format json` emits structured findings with stable IDs and source columns. `--fix --dry-run` previews the initial mechanical edits; later fixpoint passes can discover more. `--ci` runs Rulewright, rustfmt, and Clippy as one local gate. Run `rulewright --help` for the complete CLI.
+
+For an established workspace, `--write-baseline` records the current debt without suppressing it in source. Future runs with `--baseline` allow that exact count and still fail on new findings or increases to an existing finding.
 
 ## Configuration and directives
 
@@ -71,9 +76,9 @@ Rules make decisions visible and enforceable; they do not decide whether those d
 
 ## Autofix
 
-Most rules deliberately have no automatic fix. They explain what was found, why it matters, and show useful examples so a person or AI agent can make the right change with the surrounding code in mind. Autofixes are reserved for mechanical rewrites that Rulewright can verify without guessing.
+Most rules deliberately have no automatic fix. They explain what was found, why it matters, and show useful examples so a person or AI agent can make the right change with the surrounding code in mind. Autofixes are reserved for mechanical rewrites that do not require semantic guesses.
 
-Use `rulewright --fix --dry-run` to preview changes. When you apply them, Rulewright makes the safe edits, reruns the rules until nothing else changes, and checks the complete workspace again before reporting success. The [architecture guide](docs/architecture.md) explains how that works internally.
+Use `rulewright --fix --dry-run` to preview changes. When you apply them, Rulewright makes the available mechanical edits, reruns the selected rules until nothing else changes, and analyzes the complete workspace again. Run the repository's normal compile and test gates afterward. The [architecture guide](docs/architecture.md) explains how the fix loop works internally.
 
 ## Custom rule packs
 
@@ -85,7 +90,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) to get started and [SECURITY.md](SECURITY
 
 ## Built on
 
-Rulewright relies on a lot of excellent open-source work. [rust-analyzer's syntax crates](https://github.com/rust-lang/rust-analyzer) provide the Rust syntax tree, [Taplo](https://github.com/tamasfe/taplo) parses TOML, [Cargo Metadata](https://github.com/oli-obk/cargo_metadata) describes Cargo workspaces, and [ignore](https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore) handles file discovery and ignore rules. [Rayon](https://github.com/rayon-rs/rayon) runs checks in parallel, [inventory](https://github.com/dtolnay/inventory) collects registered rules, and [Clap](https://github.com/clap-rs/clap) powers the CLI. These projects do a lot of the heavy lifting and deserve the credit.
+Rulewright relies on a lot of excellent open-source work:
+
+- [rust-analyzer's syntax crates](https://github.com/rust-lang/rust-analyzer) provide the Rust syntax tree.
+- [Taplo](https://github.com/tamasfe/taplo) parses TOML, while [Cargo Metadata](https://github.com/oli-obk/cargo_metadata) describes Cargo workspaces.
+- [ignore](https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore) handles file discovery and ignore rules, while [gix](https://github.com/GitoxideLabs/gitoxide) reads working-tree status.
+- [Rayon](https://github.com/rayon-rs/rayon) runs checks in parallel, and [imara-diff](https://github.com/pascalkuthe/imara-diff) keeps fix previews readable.
+- [inventory](https://github.com/dtolnay/inventory) collects registered rules, and [Clap](https://github.com/clap-rs/clap) powers the CLI.
+
+These projects do a lot of the heavy lifting and deserve the credit.
 
 ## License
 

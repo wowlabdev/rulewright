@@ -18,7 +18,12 @@ if ! grep -Fxq '## Current violations' "${llm_report}"; then
     exit 1
 fi
 
-awk '/^## Current violations$/{exit} {print}' "${llm_report}" >"${generated_catalog}"
+awk '
+    /^## Current violations$/ { exit }
+    /^## How to use findings$/ { skip = 1; next }
+    skip && /^## / { skip = 0 }
+    !skip { print }
+' "${llm_report}" >"${generated_catalog}"
 npx --yes prettier@3.6.2 --write "${generated_catalog}" --log-level silent
 mv "${generated_catalog}" "${repository_root}/RULES.md"
 

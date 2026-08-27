@@ -3,9 +3,10 @@ mod common;
 use std::{fs, process::Command};
 
 use common::{command, initialize, root_package, run, text, write};
+use rulewright::RuleRegistry;
 
 #[test]
-fn generated_config_disables_opt_in_rules() {
+fn generated_config_matches_registry_defaults() {
     let temporary = tempfile::tempdir().expect("temporary project should be created");
     let root = temporary.path();
 
@@ -14,11 +15,23 @@ fn generated_config_disables_opt_in_rules() {
     let contents = fs::read_to_string(root.join("rulewright.toml"))
         .expect("generated configuration should be readable");
     let config: toml::Value = toml::from_str(&contents).expect("generated configuration parses");
+    let rules = config["rules"]
+        .as_table()
+        .expect("generated configuration should contain a rules table");
+    let metadata = RuleRegistry::with_builtins()
+        .expect("built-in rule IDs should be unique")
+        .metadata();
 
-    assert_eq!(
-        config["rules"]["rust_mutex_in_async"]["enabled"].as_bool(),
-        Some(false)
-    );
+    assert_eq!(rules.len(), metadata.len());
+
+    for rule in metadata {
+        assert_eq!(
+            rules[rule.name]["enabled"].as_bool(),
+            Some(rule.default_enabled),
+            "generated default for {} should match its registry metadata",
+            rule.name
+        );
+    }
 }
 
 #[test]
@@ -42,6 +55,84 @@ fn root_package_is_discovered_from_a_descendant() {
 
     assert!(!package_aware.status.success());
     assert!(text(&package_aware).contains("root-package"));
+}
+
+#[test]
+fn json_findings_include_stable_locations_and_rule_metadata() {
+    let temporary = tempfile::tempdir().expect("temporary project should be created");
+    let root = temporary.path();
+
+    root_package(root, "json-findings", "pub fn probe() { dbg!(1); }\n");
+    initialize(root);
+    let output = run(root, &["check", "--rule", "rust_dbg", "--format", "json"]);
+
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty(), "{}", text(&output));
+    let document: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("findings output should be JSON");
+    let finding = &document["findings"][0];
+
+    assert_eq!(document["schema_version"], 1);
+    assert_eq!(finding["path"], "src/lib.rs");
+    assert_eq!(finding["line"], 1);
+    assert!(finding["column"].as_u64().is_some_and(|column| column > 1));
+    assert_eq!(finding["rule"], "rust_dbg");
+    assert_eq!(finding["severity"], "medium");
+    assert_eq!(finding["fixable"], true);
+    assert_eq!(finding["id"].as_str().map(str::len), Some(64));
+}
+
+#[test]
+fn adoption_baseline_blocks_only_findings_beyond_recorded_counts() {
+    let temporary = tempfile::tempdir().expect("temporary project should be created");
+    let root = temporary.path();
+    let baseline = root.join("rulewright-baseline.json");
+
+    root_package(root, "baseline", "pub fn first() { dbg!(1); }\n");
+    initialize(root);
+    let written = run(
+        root,
+        &[
+            "--rule",
+            "rust_dbg",
+            "--write-baseline",
+            "rulewright-baseline.json",
+        ],
+    );
+
+    assert!(written.status.success(), "{}", text(&written));
+    assert!(baseline.is_file());
+
+    let unchanged = run(
+        root,
+        &[
+            "check",
+            "--rule",
+            "rust_dbg",
+            "--baseline",
+            "rulewright-baseline.json",
+        ],
+    );
+
+    assert!(unchanged.status.success(), "{}", text(&unchanged));
+
+    write(
+        &root.join("src/lib.rs"),
+        "pub fn first() { dbg!(1); }\npub fn second() { dbg!(2); }\n",
+    );
+    let grown = run(
+        root,
+        &[
+            "check",
+            "--rule",
+            "rust_dbg",
+            "--baseline",
+            "rulewright-baseline.json",
+        ],
+    );
+
+    assert!(!grown.status.success());
+    assert_eq!(text(&grown).matches("src/lib.rs:").count(), 1);
 }
 
 #[test]
@@ -245,6 +336,8 @@ fn llm_explains_how_to_use_alignment_regions() {
     assert!(output_text.contains("corresponding commas"));
     assert!(output_text.contains("#[rustfmt::skip]"));
     assert!(output_text.contains("reported without an automatic rewrite"));
+    assert!(output_text.contains("## How to use findings"));
+    assert!(output_text.contains("Do not hide a finding behind an identity macro"));
 }
 
 #[test]

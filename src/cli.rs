@@ -7,7 +7,7 @@ use std::{
 };
 
 use cargo_metadata::{Metadata, MetadataCommand};
-use clap::{ArgGroup, Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand, ValueEnum};
 use tabled::Tabled;
 
 use crate::{
@@ -27,31 +27,25 @@ use crate::{
     about = "Executable engineering standards for Rust workspaces",
     group(
         ArgGroup::new("terminal_action")
-            .args(["init", "list", "parse_config", "detail", "llm", "suppressions"])
+            .args(["init", "list", "parse_config", "detail", "llm", "suppressions", "write_baseline"])
             .multiple(false)
     )
 )]
 struct Args {
-    /// Run a maintenance subcommand.
+    /// Run an explicit check or maintenance command.
     #[command(subcommand)]
     command: Option<RulewrightCommand>,
     /// Run only the named rule; repeat to select more than one.
-    #[arg(long, short)]
+    #[arg(long, short, global = true)]
     rule: Vec<String>,
-    /// Apply every available safe fix.
-    #[arg(
-        long,
-        conflicts_with_all = ["init", "list", "parse_config", "detail", "llm", "suppressions"]
-    )]
+    /// Apply every available mechanical fix, then rerun all selected rules.
+    #[arg(long, global = true)]
     fix: bool,
     /// Show planned changes without writing files.
     #[arg(long, global = true)]
     dry_run: bool,
     /// Run Rulewright, rustfmt, and Clippy as one local CI gate.
-    #[arg(
-        long,
-        conflicts_with_all = ["init", "list", "parse_config", "detail", "llm", "suppressions"]
-    )]
+    #[arg(long, global = true)]
     ci: bool,
     /// Create a complete rulewright.toml without replacing an existing file.
     #[arg(long)]
@@ -81,7 +75,7 @@ struct Args {
     #[arg(long, short = 'd', global = true)]
     dirty: bool,
     /// Treat unknown or missing configuration entries as errors.
-    #[arg(long)]
+    #[arg(long, global = true)]
     strict: bool,
     /// Analyze this Cargo workspace instead of discovering one from the current directory.
     #[arg(long, global = true, value_name = "PATH")]
@@ -89,10 +83,32 @@ struct Args {
     /// Load configuration from this path instead of rulewright.toml at the workspace root.
     #[arg(long, global = true, value_name = "PATH")]
     config: Option<std::path::PathBuf>,
+    /// Ignore findings already recorded in this baseline file.
+    #[arg(long, global = true, value_name = "PATH")]
+    baseline: Option<std::path::PathBuf>,
+    /// Record the current findings as an adoption baseline.
+    #[arg(
+        long,
+        value_name = "PATH",
+        conflicts_with_all = ["fix", "dry_run", "ci"]
+    )]
+    write_baseline: Option<std::path::PathBuf>,
+    /// Select human-readable or structured findings output.
+    #[arg(long, global = true, value_enum, default_value_t)]
+    format: FindingsFormat,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+enum FindingsFormat {
+    #[default]
+    Human,
+    Json,
 }
 
 #[derive(Debug, Subcommand)]
 enum RulewrightCommand {
+    /// Check the workspace with the selected rules.
+    Check,
     /// Remove suppression targets that no longer hide a violation.
     Clean,
 }
@@ -125,13 +141,23 @@ pub fn run_with_registry(registry: &RuleRegistry) -> ExitCode {
 }
 
 fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
+    if let Some(error) = incompatible_analysis_options(args) {
+        output::error(error);
+
+        return ExitCode::FAILURE;
+    }
+
     if let Some(name) = unknown_rule_filter(registry, &args.rule) {
         output::error(&format!("unknown rule: {name}"));
 
         return ExitCode::FAILURE;
     }
 
-    if !args.quiet && !args.llm && args.parse_config.is_none() {
+    if !args.quiet
+        && !args.llm
+        && args.parse_config.is_none()
+        && args.format == FindingsFormat::Human
+    {
         output::banner("Rulewright", env!("CARGO_PKG_VERSION"));
     }
 
@@ -218,17 +244,49 @@ fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
         );
     }
 
+    let failed = analysis_failed(args, &run_ctx, &initial_directory);
+
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn analysis_failed(
+    args: &Args,
+    run_ctx: &runner::RunCtx<'_>,
+    initial_directory: &std::path::Path,
+) -> bool {
     let fix_mode = match (args.fix, args.dry_run) {
         (true, true) => runner::FixMode::DryRun,
         (true, false) => runner::FixMode::Apply,
         (false, _) => runner::FixMode::Off,
     };
-    let mut failed = !runner::run(&run_ctx, fix_mode);
+    let report_format = match args.format {
+        FindingsFormat::Human => runner::ReportFormat::Human,
+        FindingsFormat::Json => runner::ReportFormat::Json,
+    };
+    let baseline_path = args
+        .baseline
+        .as_ref()
+        .map(|path| PathBuf::from(resolve_relative(path, initial_directory)));
+    let write_baseline_path = args
+        .write_baseline
+        .as_ref()
+        .map(|path| PathBuf::from(resolve_relative(path, initial_directory)));
+    let mut failed = !runner::run(
+        run_ctx,
+        fix_mode,
+        report_format,
+        baseline_path.as_deref(),
+        write_baseline_path.as_deref(),
+    );
 
     if args.ci {
-        failed |= !run_cargo_check("fmt", &["fmt", "--all", "--", "--check"], &project.root);
+        failed |= !run_cargo_check("fmt", &["fmt", "--all", "--", "--check"], run_ctx.root);
         let clippy_target =
-            runner::cargo_target_dir(&project.root, &project.root).join("rulewright-clippy");
+            runner::cargo_target_dir(run_ctx.root, run_ctx.root).join("rulewright-clippy");
 
         failed |= !run_cargo_check_with_environment(
             "clippy",
@@ -240,16 +298,38 @@ fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
                 "-D",
                 "warnings",
             ],
-            &project.root,
+            run_ctx.root,
             &[("CARGO_TARGET_DIR", clippy_target.as_os_str())],
         );
     }
 
-    if failed {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
+    failed
+}
+
+fn incompatible_analysis_options(args: &Args) -> Option<&'static str> {
+    let terminal_action = args.init
+        || args.list
+        || args.parse_config.is_some()
+        || args.detail.is_some()
+        || args.llm
+        || args.suppressions
+        || args.write_baseline.is_some();
+
+    if terminal_action && (args.fix || args.dry_run || args.ci) {
+        return Some("terminal actions cannot be used with --fix, --dry-run, or --ci");
     }
+
+    if args.format == FindingsFormat::Json
+        && (args.fix || args.dry_run || args.ci || terminal_action)
+    {
+        return Some("--format json is only available for findings checks");
+    }
+
+    if args.baseline.is_some() && (args.fix || args.dry_run || terminal_action) {
+        return Some("--baseline cannot be combined with fixes or another terminal action");
+    }
+
+    None
 }
 
 fn unknown_rule_filter<'a>(registry: &RuleRegistry, filter: &'a [String]) -> Option<&'a str> {
@@ -677,7 +757,7 @@ mod tests {
 
         for explanation in [
             "Run only the named rule",
-            "Apply every available safe fix",
+            "Apply every available mechanical fix",
             "Show planned changes",
             "one local CI gate",
             "complete rulewright.toml",
@@ -692,6 +772,9 @@ mod tests {
             "configuration entries as errors",
             "Analyze this Cargo workspace",
             "instead of rulewright.toml",
+            "recorded in this baseline file",
+            "adoption baseline",
+            "structured findings output",
         ] {
             assert!(
                 help.contains(explanation),
@@ -707,10 +790,34 @@ mod tests {
             ["rulewright", "--fix", "--llm"].as_slice(),
             ["rulewright", "--list", "--init"].as_slice(),
         ] {
-            let error = Args::try_parse_from(arguments).expect_err("actions should conflict");
-
-            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+            match Args::try_parse_from(arguments) {
+                Ok(args) => assert!(
+                    incompatible_analysis_options(&args).is_some(),
+                    "actions should be rejected: {arguments:?}"
+                ),
+                Err(error) => assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict),
+            }
         }
+    }
+
+    #[test]
+    fn check_subcommand_accepts_analysis_flags_after_the_command() {
+        let args = Args::try_parse_from([
+            "rulewright",
+            "check",
+            "--rule",
+            "rust_dbg",
+            "--strict",
+            "--fix",
+            "--dry-run",
+        ])
+        .expect("check command should parse");
+
+        assert!(matches!(args.command, Some(RulewrightCommand::Check)));
+        assert_eq!(args.rule, ["rust_dbg"]);
+        assert!(args.strict);
+        assert!(args.fix);
+        assert!(args.dry_run);
     }
 
     fn root_package(root: &Path) {

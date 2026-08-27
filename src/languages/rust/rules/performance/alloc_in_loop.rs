@@ -18,9 +18,14 @@ const EXAMPLES: &[Example] = &[
         pass: false,
     },
     Example {
-        label: "push_str in loop",
+        label: "push_str does not necessarily allocate",
         code: "fn f() { let mut s = String::new(); for _ in 0..10 { s.push_str(\"x\"); } }",
-        pass: false,
+        pass: true,
+    },
+    Example {
+        label: "format_args borrows its arguments",
+        code: r#"fn f() { for i in 0..10 { let _ = format_args!("item {}", i); } }"#,
+        pass: true,
     },
     Example {
         label: "format! outside loop",
@@ -46,9 +51,10 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     alloc_in_loop,
-    "Flag `format!()`, `format_args!()`, `.to_string()`, and `.push_str()` inside loops.",
-    "These allocate or format a new String each iteration. Pre-allocate, use write! to a buffer, or collect and join.",
+    "Flag `format!()` and `.to_string()` inside loops.",
+    "These syntax forms create a new String each iteration. In a measured hot loop, reuse a buffer, write into existing storage, or move the conversion outside the loop when possible. Intentional allocations and cold loops may be excluded through configuration or a documented suppression.",
     Medium,
+    default = false,
 );
 
 fn check_alloc_in_loop(ctx: &AstCtx<'_>) -> Vec<Violation> {
@@ -61,8 +67,6 @@ fn check_alloc_in_loop(ctx: &AstCtx<'_>) -> Vec<Violation> {
             let method = support::method_name(&call)?;
             let message = if method == "to_string" && support::has_no_args(&call) {
                 ".to_string() inside a loop — allocates each iteration"
-            } else if method == "push_str" {
-                ".push_str() inside a loop — consider pre-allocating or collecting and joining"
             } else {
                 return None;
             };
@@ -83,7 +87,7 @@ fn check_alloc_in_loop(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
             let name = path.segment()?.name_ref()?.text().to_string();
 
-            matches!(name.as_str(), "format" | "format_args")
+            (name == "format")
                 .then(|| ctx.violation(&call, "format!() inside a loop — allocates each iteration"))
         });
 

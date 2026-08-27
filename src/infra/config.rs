@@ -393,6 +393,16 @@ impl Config {
         let mut rules = BTreeMap::new();
         let mut errors = Vec::new();
 
+        for (set_name, patterns) in &raw.glob_sets {
+            for pattern in patterns {
+                if let Err(error) = crate::glob::validate(pattern) {
+                    errors.push(format!(
+                        "glob set `{set_name}` contains invalid pattern `{pattern}`: {error}"
+                    ));
+                }
+            }
+        }
+
         for (rule_name, raw_rule) in &raw.rules {
             let mut ignore = Vec::new();
 
@@ -417,7 +427,15 @@ impl Config {
                         ));
                     }
                     // #rw(rust_clone_in_loop) literal patterns cross from raw into resolved config ownership
-                    None if !ignore.contains(entry) => ignore.push(entry.clone()),
+                    None if !ignore.contains(entry) => {
+                        if let Err(error) = crate::glob::validate(entry) {
+                            errors.push(format!(
+                                "rule `{rule_name}` contains invalid ignore pattern `{entry}`: {error}"
+                            ));
+                        }
+
+                        ignore.push(entry.clone());
+                    }
                     None => {}
                 }
             }

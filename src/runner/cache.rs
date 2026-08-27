@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-const CACHE_SCHEMA: u32 = 1;
+const CACHE_SCHEMA: u32 = 2;
 const BASE_DOMAIN: &[u8] = b"rulewright:analysis-base:v1";
 const RUST_CONTEXT_DOMAIN: &[u8] = b"rulewright:rust-context:v1";
 const TOML_CONTEXT_DOMAIN: &[u8] = b"rulewright:toml-context:v1";
@@ -329,6 +329,7 @@ struct CachedAnalysis {
 struct CachedViolation {
     rel: String,
     line: usize,
+    column: Option<usize>,
     message: String,
     rule: Option<String>,
 }
@@ -338,6 +339,7 @@ impl CachedViolation {
         Self {
             rel: violation.rel.clone(),
             line: violation.line,
+            column: violation.column,
             message: violation.message.clone(),
             rule: violation.rule.map(str::to_owned),
         }
@@ -354,6 +356,7 @@ impl CachedViolation {
         Some(Violation {
             rel: self.rel.clone(),
             line: self.line,
+            column: self.column,
             message: self.message.clone(),
             rule,
         })
@@ -501,8 +504,9 @@ fn rust_context_checksum(snapshot: &TreeSnapshot) -> Option<Checksum> {
     for entry in snapshot.entries() {
         let path = entry.relative_path();
         let cargo_manifest = path.file_name().is_some_and(|name| name == "Cargo.toml");
+        let rust_source = path.extension().is_some_and(|extension| extension == "rs");
 
-        if !cargo_manifest {
+        if !cargo_manifest && !rust_source {
             continue;
         }
 
@@ -587,7 +591,7 @@ mod tests {
     }
 
     #[gtest]
-    fn rust_context_tracks_manifests_but_not_individual_sources() -> Result<()> {
+    fn rust_context_tracks_manifests_and_module_topology_sources() -> Result<()> {
         let temporary = temporary::Directory::new().or_fail()?;
         let workspace_root = temporary.path();
         let manifest = workspace_root.join("example/Cargo.toml");
@@ -606,7 +610,9 @@ mod tests {
         let source_snapshot =
             TreeSnapshot::capture(workspace_root, [&manifest, &source]).or_fail()?;
 
-        verify_that!(rust_context_checksum(&source_snapshot), some(eq(initial)))?;
+        let after_source = rust_context_checksum(&source_snapshot).or_fail()?;
+
+        verify_that!(after_source, not(eq(initial)))?;
 
         file::write_text(
             &manifest,
@@ -618,7 +624,7 @@ mod tests {
 
         verify_that!(
             rust_context_checksum(&manifest_snapshot),
-            some(not(eq(initial)))
+            some(not(eq(after_source)))
         )?;
 
         Ok(())

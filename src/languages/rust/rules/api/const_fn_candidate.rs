@@ -3,7 +3,7 @@ use ra_ap_syntax::{
     ast::{HasGenericParams, HasName},
 };
 
-use crate::{AstCtx, Example, Fix, Violation};
+use crate::{AstCtx, Example, Violation};
 
 #[rustfmt::skip]
 const EXAMPLES: &[Example] = &[
@@ -116,10 +116,10 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     const_fn_candidate,
-    "Flag pure functions that could be `const fn`.",
-    "Functions that only use const-compatible operations can be const fn, enabling compile-time evaluation.",
+    "Flag syntactically simple functions worth evaluating as `const fn` candidates.",
+    "Const eligibility depends on types, trait implementations, destructors, and the active toolchain. This rule only identifies candidates; the compiler must confirm any manual change.",
     Low,
-    fix_const_fn_candidate,
+    default = false,
 );
 
 fn check_const_fn_candidate(ctx: &AstCtx<'_>) -> Vec<Violation> {
@@ -146,7 +146,7 @@ fn check_const_fn_candidate(ctx: &AstCtx<'_>) -> Vec<Violation> {
             Some(ctx.violation(
                 &name,
                 format!(
-                    "`{name}` could be a `const fn` — it only uses const-compatible operations"
+                    "`{name}` is a syntactically simple `const fn` candidate — verify type operations and destructors with the project compiler before changing it"
                 ),
             ))
         })
@@ -211,16 +211,16 @@ fn is_free_function(function: &ast::Fn) -> bool {
         .is_none_or(|parent| !ast::AssocItemList::can_cast(parent.kind()))
 }
 
-fn fix_const_fn_candidate(ctx: &AstCtx<'_>, v: &Violation) -> Option<Fix> {
-    let line = ctx.file.line(v.line)?;
-
-    Some(Fix::replace_line(
-        v.line,
-        line.replacen("fn ", "const fn ", 1),
-    ))
-}
-
 crate::rulewright_ast_test!(check_const_fn_candidate, {
     crate::example_tests!(EXAMPLES, check_const_fn_candidate);
-    crate::fix_tests!(ast, check_const_fn_candidate, fix_const_fn_candidate);
+
+    #[test]
+    fn rule_is_diagnostic_only() {
+        let rule = inventory::iter::<crate::Rule>
+            .into_iter()
+            .find(|rule| rule.info.name == "rust_const_fn_candidate")
+            .expect("rust_const_fn_candidate is registered");
+
+        assert!(rule.fix.is_none());
+    }
 });

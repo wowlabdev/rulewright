@@ -58,8 +58,9 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     module_prefix_in_name,
     "Flag pub type definitions whose name repeats the module name as a prefix (`FooId` in `foo.rs`).",
-    "Module information baked into type names is redundant: users can write `foo::Id` and disambiguate locally.",
+    "Module-qualified APIs can avoid repeating the module in every public type. Flat re-exports and collision-prone APIs are intentional exceptions because this syntax-only rule cannot inspect the final exported namespace.",
     Low,
+    default = false,
 );
 
 fn check_module_prefix_in_name(ctx: &AstCtx<'_>) -> Vec<Violation> {
@@ -80,16 +81,10 @@ fn check_module_prefix_in_name(ctx: &AstCtx<'_>) -> Vec<Violation> {
                     .all(|(part, segment)| part.eq_ignore_ascii_case(segment));
 
             is_prefixed.then(|| {
-                let short: String = segments
-                    .iter()
-                    .skip(stem_parts.len())
-                    .map(String::as_str)
-                    .collect();
-
                 ctx.violation(
                     &name,
                     format!(
-                        "type name `{name_text}` repeats its module name — prefer `{short}` (used as `module::{short}`)"
+                        "type name `{name_text}` repeats its module name — shorten only when callers use the module-qualified path; keep it when a flat re-export needs disambiguation"
                     ),
                 )
             })

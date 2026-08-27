@@ -9,6 +9,7 @@ use googletest::prelude::*;
 #[cfg(test)]
 mod dispatch_tests;
 mod rules;
+pub(crate) mod test_files;
 
 use std::collections::HashSet;
 
@@ -44,10 +45,27 @@ pub struct AstCtx<'a> {
     pub file: &'a FileCtx<'a>,
     pub root: &'a SourceFile,
     pub line_index: &'a LineIndex,
+    pub(crate) test_only_file: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FileKind {
+    Production,
+    TestOnly,
+}
+
+impl FileKind {
+    const fn is_test_only(self) -> bool {
+        matches!(self, Self::TestOnly)
+    }
 }
 
 pub trait RustLocation {
     fn line_in(&self, ctx: &AstCtx<'_>) -> usize;
+
+    fn column_in(&self, _ctx: &AstCtx<'_>) -> Option<usize> {
+        None
+    }
 }
 
 impl<N> RustLocation for &N
@@ -59,6 +77,15 @@ where
             .line_col(self.syntax().text_range().start())
             .line as usize
             + 1
+    }
+
+    fn column_in(&self, ctx: &AstCtx<'_>) -> Option<usize> {
+        Some(
+            ctx.line_index
+                .line_col(self.syntax().text_range().start())
+                .col as usize
+                + 1,
+        )
     }
 }
 
@@ -74,10 +101,7 @@ impl AstCtx<'_> {
     where
         N: AstNode,
     {
-        node.syntax()
-            .ancestors()
-            .filter_map(ast::Item::cast)
-            .any(|item| item.attrs().any(|attr| is_test_attribute(&attr)))
+        self.test_only_file || syntax_is_in_test(node.syntax())
     }
 
     #[expect(
@@ -88,8 +112,20 @@ impl AstCtx<'_> {
         location.line_in(self)
     }
 
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "RustLocation is implemented for AST references, so the generic value is already a cheap reference"
+    )]
     pub fn violation(&self, location: impl RustLocation, msg: impl Into<String>) -> Violation {
-        crate::violation(self.file.rel, self.line_of(location), msg)
+        let line = location.line_in(self);
+        let column = location.column_in(self);
+        let violation = crate::violation(self.file.rel, line, msg);
+
+        if let Some(column) = column {
+            violation.with_column(column)
+        } else {
+            violation
+        }
     }
 }
 
@@ -99,6 +135,7 @@ impl std::fmt::Debug for AstCtx<'_> {
             .field("file", &self.file)
             .field("root", &"<ra_ap_syntax::SourceFile>")
             .field("line_index", &self.line_index)
+            .field("test_only_file", &self.test_only_file)
             .finish()
     }
 }
@@ -109,15 +146,21 @@ pub(crate) fn analyze(
     rules: &[&Rule],
     registered_names: &HashSet<&str>,
     fix_mode: bool,
+    file_kind: FileKind,
 ) -> Analysis {
     let mut analysis = Analysis::default();
     let mut ignore_errors = Vec::new();
     let ra_parse = SourceFile::parse(file.contents, Edition::Edition2024);
     let ra_root = ra_parse.errors().is_empty().then(|| ra_parse.tree());
-    let visible_lines = ra_root.as_ref().map_or_else(
-        || file.lines.to_vec(),
-        |syntax| line_rule_view(file.lines, syntax, file.contents, file.rel),
-    );
+    let test_only_file = file_kind.is_test_only();
+    let visible_lines = if test_only_file {
+        vec![""; file.lines.len()]
+    } else {
+        ra_root.as_ref().map_or_else(
+            || file.lines.to_vec(),
+            |syntax| line_rule_view(file.lines, syntax, file.contents, file.rel),
+        )
+    };
     let line_file = FileCtx {
         rel: file.rel,
         path: file.path,
@@ -173,6 +216,7 @@ pub(crate) fn analyze(
             file,
             root: &root,
             line_index: &line_index,
+            test_only_file,
         };
 
         for rule in rules {
@@ -223,6 +267,7 @@ pub(crate) fn analyze(
                     file,
                     &root,
                     workspace_suppressions,
+                    test_only_file,
                 ));
         }
     }
@@ -269,6 +314,7 @@ pub(crate) fn audit_suppressions(
         file: &audit_file,
         root: &root,
         line_index: &LineIndex::new(file.contents),
+        test_only_file: false,
     };
     let mut raw_violations = Vec::new();
 
@@ -284,7 +330,8 @@ pub(crate) fn audit_suppressions(
     }
 
     raw_violations.sort_by(|a, b| a.line.cmp(&b.line).then(a.rule.cmp(&b.rule)));
-    let workspace_file = crate::languages::workspace::extract(file, &root, suppressions.clone());
+    let workspace_file =
+        crate::languages::workspace::extract(file, &root, suppressions.clone(), false);
 
     Ok(SuppressionAudit {
         suppressions,
@@ -411,6 +458,12 @@ fn is_test_attribute(attr: &ast::Attr) -> bool {
         .is_some_and(|predicate| cfg_requires_test(&predicate))
 }
 
+fn syntax_is_in_test(node: &SyntaxNode) -> bool {
+    node.ancestors()
+        .filter_map(ast::Item::cast)
+        .any(|item| item.attrs().any(|attr| is_test_attribute(&attr)))
+}
+
 fn cfg_requires_test(predicate: &ast::CfgPredicate) -> bool {
     match predicate {
         ast::CfgPredicate::CfgAtom(atom) => atom
@@ -484,7 +537,7 @@ mod tests {
             .collect();
         let registered = rules.iter().map(|rule| rule.info.name).collect();
 
-        analyze(&file, &rules, &registered, false)
+        analyze(&file, &rules, &registered, false, FileKind::Production)
     }
 
     #[gtest]
@@ -593,7 +646,7 @@ mod tests {
             .map(|rule| rule.info.name)
             .collect();
 
-        let analysis = analyze(&file, &rules, &registered, true);
+        let analysis = analyze(&file, &rules, &registered, true, FileKind::Production);
 
         verify_true!(analysis.violations.is_empty())?;
         verify_true!(analysis.fixes.is_empty())?;
@@ -623,7 +676,7 @@ mod tests {
             .map(|rule| rule.info.name)
             .collect();
 
-        let analysis = analyze(&file, &rules, &registered, false);
+        let analysis = analyze(&file, &rules, &registered, false, FileKind::Production);
 
         verify_eq!(analysis.violations.len(), 1)?;
 
@@ -655,7 +708,7 @@ mod tests {
             .find(|rule| rule.info.name == "rust_dbg")
             .or_fail()?;
 
-        let analysis = analyze(&file, &[dbg_rule], &registered, false);
+        let analysis = analyze(&file, &[dbg_rule], &registered, false, FileKind::Production);
 
         verify_true!(analysis.violations.is_empty())
     }
@@ -692,7 +745,13 @@ mod tests {
             .find(|rule| rule.info.name == DIRECTIVE_RULE)
             .or_fail()?;
 
-        let analysis = analyze(&file, &[directive_rule], &registered, false);
+        let analysis = analyze(
+            &file,
+            &[directive_rule],
+            &registered,
+            false,
+            FileKind::Production,
+        );
 
         verify_true!(analysis.violations.is_empty())
     }

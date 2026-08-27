@@ -10,17 +10,22 @@ use crate::{AstCtx, Example, Violation};
 const EXAMPLES: &[Example] = &[
     Example {
         label: "shared pair order flips",
-        code: "fn create(tenant: u32, user: u32) {}\nfn delete(user: u32, tenant: u32) {}",
+        code: "fn create_user(tenant: u32, user: u32) {}\nfn delete_user(user: u32, tenant: u32) {}",
         pass: false,
     },
     Example {
+        label: "unrelated free functions are not compared",
+        code: "fn create(tenant: u32, user: u32) {}\nfn delete(user: u32, tenant: u32) {}",
+        pass: true,
+    },
+    Example {
         label: "flip with interleaved params",
-        code: "fn f(user: u32, tenant: u32, extra: bool) {}\nfn g(flag: bool, tenant: u32, user: u32) {}",
+        code: "fn create_account(user: u32, tenant: u32, extra: bool) {}\nfn delete_account(flag: bool, tenant: u32, user: u32) {}",
         pass: false,
     },
     Example {
         label: "flip across impl fns",
-        code: "struct S;\nimpl S {\n    fn f(&self, user: u32, tenant: u32) {}\n    fn g(&self, tenant: u32, user: u32) {}\n}",
+        code: "struct S;\nimpl S {\n    fn create_user(&self, user: u32, tenant: u32) {}\n    fn delete_user(&self, tenant: u32, user: u32) {}\n}",
         pass: false,
     },
     Example {
@@ -52,9 +57,10 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     param_order_consistency,
-    "Flag fns whose shared parameters appear in a different order than an earlier fn in the file.",
-    "The same conceptual parameters appearing in flipping orders across sibling functions invites transposed-argument bugs and raises call-site friction.",
+    "Flag related fns whose shared parameters appear in a different order.",
+    "Shared parameter order should stay stable within a real API family. Rulewright approximates that relationship with a common final name segment and the same impl or free-function module, so enable this only where that naming convention identifies meaningful families.",
     Low,
+    default = false,
 );
 
 const MIN_SHARED_PAIRS: usize = 2;
@@ -64,6 +70,29 @@ type ParamPair = (String, String);
 struct FnParams {
     name: String,
     params: Vec<ParamPair>,
+    owner: Option<String>,
+    family: Option<String>,
+}
+
+fn owner(function: &ast::Fn) -> Option<String> {
+    function
+        .syntax()
+        .parent()
+        .and_then(ast::AssocItemList::cast)
+        .and_then(|items| items.syntax().parent())
+        .and_then(ast::Impl::cast)
+        .and_then(|item| item.self_ty())
+        .map(|ty| ty.syntax().text().to_string().split_whitespace().collect())
+}
+
+fn function_family(name: &str) -> Option<String> {
+    name.rsplit_once('_').map(|(_, family)| family.to_owned())
+}
+
+fn related(earlier: &FnParams, owner: Option<&str>, family: Option<&str>) -> bool {
+    earlier.owner.as_deref() == owner
+        && earlier.family.is_some()
+        && earlier.family.as_deref() == family
 }
 
 fn param_pairs(function: &ast::Fn) -> Vec<ParamPair> {
@@ -124,11 +153,13 @@ fn check_param_order_consistency(ctx: &AstCtx<'_>) -> Vec<Violation> {
         let Some(name) = function.name() else {
             continue;
         };
+        let owner = owner(&function);
+        let family = function_family(name.text().as_str());
 
-        if let Some(earlier) = seen
-            .iter()
-            .find(|earlier: &&FnParams| order_conflicts(&earlier.params, &params))
-        {
+        if let Some(earlier) = seen.iter().find(|earlier: &&FnParams| {
+            related(earlier, owner.as_deref(), family.as_deref())
+                && order_conflicts(&earlier.params, &params)
+        }) {
             violations
                 .push(ctx.violation(&name, conflict_message(name.text().as_str(), &earlier.name)));
         }
@@ -136,6 +167,8 @@ fn check_param_order_consistency(ctx: &AstCtx<'_>) -> Vec<Violation> {
         seen.push(FnParams {
             name: name.text().to_string(),
             params,
+            owner,
+            family,
         });
     }
 

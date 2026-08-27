@@ -239,20 +239,8 @@ fn is_control(expression: &ast::Expr) -> bool {
     )
 }
 
-fn is_attached_directive(token: &SyntaxToken) -> bool {
-    token.kind() == SyntaxKind::COMMENT
-        && matches!(
-            crate::infra::parse::directive(token.text()),
-            Some(crate::infra::parse::DirectiveResult::Valid(directive))
-                if matches!(
-                    directive.scope,
-                    crate::infra::parse::Scope::NextLine | crate::infra::parse::Scope::Block
-                )
-        )
-}
-
 fn padding_gap_token(current: &SyntaxNode) -> Option<SyntaxToken> {
-    gap_before_attached(current, is_attached_directive)
+    gap_before_attached(current, |token| token.kind() == SyntaxKind::COMMENT)
 }
 
 // #rw(fn: rust_unchecked_indexing) enumeration skips index zero before reading the preceding entry
@@ -414,7 +402,7 @@ crate::rulewright_ast_test!(check_padding, {
     crate::fix_tests!(ast_tree, check_padding, fix_padding);
 
     #[gtest]
-    fn fix_places_padding_before_attached_directives() -> Result<()> {
+    fn fix_places_padding_before_attached_comments() -> Result<()> {
         let cases = [
             (
                 "fn run(flag: bool) {\n    let value = String::new();\n    // #rw(rust_clone_in_loop) bounded control path\n    if flag {\n        consume(value.clone());\n    }\n}",
@@ -427,6 +415,10 @@ crate::rulewright_ast_test!(check_padding, {
             (
                 "fn run(values: &[String]) {\n    let mut copies = Vec::new();\n    // #rw(block: rust_clone_in_loop) bounded fixture\n    for value in values {\n        copies.push(value.clone());\n    }\n}",
                 "fn run(values: &[String]) {\n    let mut copies = Vec::new();\n\n    // #rw(block: rust_clone_in_loop) bounded fixture\n    for value in values {\n        copies.push(value.clone());\n    }\n}",
+            ),
+            (
+                "fn visit(points: &[Point]) {\n    let first = &points[0];\n    // BOUNDS: the empty case returned above, so index one starts the remaining points.\n    for point in &points[1..] {\n        consume(first, point);\n    }\n}",
+                "fn visit(points: &[Point]) {\n    let first = &points[0];\n\n    // BOUNDS: the empty case returned above, so index one starts the remaining points.\n    for point in &points[1..] {\n        consume(first, point);\n    }\n}",
             ),
         ];
 
@@ -492,6 +484,7 @@ crate::rulewright_ast_test!(check_padding, {
             file: &file,
             root: &root,
             line_index: &line_index,
+            test_only_file: false,
         };
 
         verify_true!(check_padding(&ctx).is_empty())

@@ -55,7 +55,7 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | ---------------------------------- | -------- | -------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | rust_abs_home_path                 | medium   | rust-line      | yes     | no      | Ban hardcoded home directory paths like `/Users/` or `/home/` in string literals.                                                                                               |
 | rust_aligned                       | low      | rust-line      | yes     | yes     | Enforce column alignment in regions marked with `// #rw:aligned`.                                                                                                               |
-| rust_alloc_in_loop                 | medium   | rust-ast       | no      | no      | Flag `format!()`, `format_args!()`, `.to_string()`, and `.push_str()` inside loops.                                                                                             |
+| rust_alloc_in_loop                 | medium   | rust-ast       | no      | no      | Flag `format!()` and `.to_string()` inside loops.                                                                                                                               |
 | rust_allow_reason                  | low      | rust-line      | yes     | no      | Require a `reason = "..."` or comment explaining why `#[allow(...)]`/`#[expect(...)]` is used.                                                                                  |
 | rust_ambient_syscall               | medium   | rust-ast       | no      | no      | Flag ambient I/O, clock, env, and entropy calls in library code.                                                                                                                |
 | rust_ambiguous_unicode             | high     | rust-line      | yes     | no      | Ban Unicode characters visually confusable with ASCII (homoglyphs).                                                                                                             |
@@ -76,7 +76,7 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_busy_wait                     | medium   | rust-ast       | yes     | no      | Flag spin loops polling `try_recv`/`try_lock`/atomics without sleeping, yielding, or blocking.                                                                                  |
 | rust_catch_unwind                  | high     | rust-ast       | yes     | no      | Require `// PANIC-BOUNDARY:` comment on `catch_unwind` calls.                                                                                                                   |
 | rust_cfg_not_test                  | medium   | rust-line      | yes     | no      | Flag `#[cfg(not(test))]` — use dependency injection or feature flags instead.                                                                                                   |
-| rust_clone_in_loop                 | medium   | rust-ast       | yes     | no      | Flag `.clone()` calls inside loop bodies (potential O(n) allocations).                                                                                                          |
+| rust_clone_in_loop                 | medium   | rust-ast       | no      | no      | Flag `.clone()` and `.to_owned()` calls on loop-invariant receivers inside loop bodies.                                                                                         |
 | rust_closure_dense_method_chain    | medium   | rust-ast       | no      | no      | Flag method-call chains containing at least the configured number of inline closure arguments.                                                                                  |
 | rust_closure_param_position        | low      | rust-ast       | yes     | no      | Flag closure parameters that are not last, and fns taking more than one closure.                                                                                                |
 | rust_collection_new_in_loop        | medium   | rust-ast       | no      | no      | Flag collection constructors (`Vec::new()`, `vec![]`, `with_capacity`, ...) bound via `let` inside loops.                                                                       |
@@ -84,7 +84,7 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_comment_space                 | low      | rust-line      | yes     | yes     | Require a space after `//` in comments (`//bad` -> `// good`).                                                                                                                  |
 | rust_commented_code                | low      | rust-line      | yes     | no      | Detect blocks of commented-out code (2+ consecutive lines).                                                                                                                     |
 | rust_concrete_io_param             | low      | rust-ast       | no      | no      | Flag fn parameters typed as concrete I/O handles like `File` or `TcpStream`.                                                                                                    |
-| rust_const_fn_candidate            | low      | rust-ast       | yes     | yes     | Flag pure functions that could be `const fn`.                                                                                                                                   |
+| rust_const_fn_candidate            | low      | rust-ast       | yes     | no      | Flag syntactically simple functions worth evaluating as `const fn` candidates.                                                                                                  |
 | rust_const_needs_doc               | low      | rust-ast       | no      | no      | Require a doc or line comment on private consts and statics holding literal values.                                                                                             |
 | rust_conversion_self_convention    | medium   | rust-ast       | no      | no      | Enforce C-CONV receivers: `as_`/`to_` methods borrow (`&self`), `into_` methods consume (`self`).                                                                               |
 | rust_ctor_new                      | low      | rust-ast       | yes     | no      | Flag public structs with `Default` but no `pub fn new` — constructors are static inherent methods (C-CTOR).                                                                     |
@@ -141,7 +141,7 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_loop_to_while                 | low      | rust-ast       | yes     | no      | Flag `loop { if cond { break; } ... }` — use `while` instead.                                                                                                                   |
 | rust_lossy_cast                    | medium   | rust-ast       | yes     | no      | Flag `as` casts to types that lose precision (`f32`, `u8`, `u16`, `i8`, `i16`).                                                                                                 |
 | rust_macro_hidden_items            | medium   | rust-ast       | yes     | no      | Flag fixed-name `pub` items emitted from quote! bodies.                                                                                                                         |
-| rust_magic_numbers                 | low      | rust-ast       | no      | no      | Flag unnamed numeric literals — extract into named constants.                                                                                                                   |
+| rust_magic_numbers                 | low      | rust-ast       | no      | no      | Flag numeric literals outside the configured allowlist for review.                                                                                                              |
 | rust_manual_async_fn               | low      | rust-ast       | yes     | no      | Flag non-async functions that return `impl Future` by wrapping the whole body in one `async` block.                                                                             |
 | rust_manual_error_impl             | low      | rust-ast       | yes     | no      | Reject hand-written `Display` and `Error` implementations for `*Error` types.                                                                                                   |
 | rust_map_err_pure_wrap             | low      | rust-ast       | yes     | no      | Flag `.map_err(...)` that only wraps the error in another type — implement `From` and let `?` convert.                                                                          |
@@ -171,8 +171,8 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_panic_in_result_fn            | high     | rust-ast       | no      | no      | Ban `panic!`, `.unwrap()`, `.expect()` in functions returning `Result`.                                                                                                         |
 | rust_panic_message                 | medium   | rust-ast       | yes     | no      | Require a message on `unreachable!` and `debug_assert!*`.                                                                                                                       |
 | rust_param_clump                   | low      | rust-workspace | yes     | no      | Find maximal parameter groups repeated across functions; full-workspace runs are authoritative.                                                                                 |
-| rust_param_order_consistency       | low      | rust-ast       | yes     | no      | Flag fns whose shared parameters appear in a different order than an earlier fn in the file.                                                                                    |
-| rust_println                       | medium   | rust-ast       | no      | yes     | Ban `println!`/`eprintln!`/`print!`/`eprint!` in library code.                                                                                                                  |
+| rust_param_order_consistency       | low      | rust-ast       | yes     | no      | Flag related fns whose shared parameters appear in a different order.                                                                                                           |
+| rust_println                       | medium   | rust-ast       | no      | no      | Ban `println!`/`eprintln!`/`print!`/`eprint!` outside test code.                                                                                                                |
 | rust_proc_macro_thin_shim          | low      | rust-ast       | yes     | no      | Require proc-macro entry points to be thin `impl_crate::name(arg.into()).into()` shims.                                                                                         |
 | rust_pub_api_docs                  | low      | rust-ast       | no      | no      | Require doc comments on public items.                                                                                                                                           |
 | rust_pub_api_foreign_types         | low      | rust-ast       | no      | no      | Flag foreign crate types leaked through `pub` fn signatures, fields, and type aliases.                                                                                          |
@@ -369,9 +369,9 @@ _trailing comments aligned_
 
 ### rust_alloc_in_loop
 
-Flag `format!()`, `format_args!()`, `.to_string()`, and `.push_str()` inside loops.
+Flag `format!()` and `.to_string()` inside loops.
 
-> These allocate or format a new String each iteration. Pre-allocate, use write! to a buffer, or collect and join.
+> These syntax forms create a new String each iteration. In a measured hot loop, reuse a buffer, write into existing storage, or move the conversion outside the loop when possible. Intentional allocations and cold loops may be excluded through configuration or a documented suppression.
 
 |          |          |
 | -------- | -------- |
@@ -394,13 +394,19 @@ _to_string in while loop_
 fn f() { let mut i = 0; while i < 10 { let _ = i.to_string(); i += 1; } }
 ```
 
-_push_str in loop_
+**Good (passes):**
+
+_push_str does not necessarily allocate_
 
 ```rust
 fn f() { let mut s = String::new(); for _ in 0..10 { s.push_str("x"); } }
 ```
 
-**Good (passes):**
+_format_args borrows its arguments_
+
+```rust
+fn f() { for i in 0..10 { let _ = format_args!("item {}", i); } }
+```
 
 _format! outside loop_
 
@@ -1885,24 +1891,18 @@ _comment with cfg not test_
 
 ### rust_clone_in_loop
 
-Flag `.clone()` calls inside loop bodies (potential O(n) allocations).
+Flag `.clone()` and `.to_owned()` calls on loop-invariant receivers inside loop bodies.
 
-> Cloning inside a loop allocates on every iteration. Borrow or restructure to avoid O(n) heap allocations. Note: this rule has no type information, so it flags all .clone() calls including cheap ones (Arc, Rc, Copy types). Suppress with `// #rw(rust_clone_in_loop) Arc clone is O(1)` when the clone is intentionally cheap.
+> A loop-invariant ownership conversion may be avoidable or movable outside the loop. Borrow or restructure when possible. Conversions of values bound inside the loop are not reported because they commonly express a required per-item ownership transfer. This syntax-only rule cannot distinguish heap copies from cheap Arc, Rc, or Copy clones, so intentional cheap clones should be suppressed with a reason.
 
 |          |          |
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | yes      |
+| Enabled  | no       |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
-
-_clone in for loop_
-
-```rust
-fn f(v: Vec<String>) { for x in &v { let y = x.clone(); } }
-```
 
 _clone in while loop_
 
@@ -1916,7 +1916,19 @@ _clone in loop loop_
 fn f(s: &String) { loop { let y = s.clone(); break; } }
 ```
 
+_to_owned in loop_
+
+```rust
+fn f(s: &str) { loop { let y = s.to_owned(); break; } }
+```
+
 **Good (passes):**
+
+_clone of loop item varies by iteration_
+
+```rust
+fn f(v: Vec<String>) { for x in &v { let y = x.clone(); } }
+```
 
 _clone outside loop_
 
@@ -2519,16 +2531,16 @@ fn inspect(file: &syn::File) {}
 
 ### rust_const_fn_candidate
 
-Flag pure functions that could be `const fn`.
+Flag syntactically simple functions worth evaluating as `const fn` candidates.
 
-> Functions that only use const-compatible operations can be const fn, enabling compile-time evaluation.
+> Const eligibility depends on types, trait implementations, destructors, and the active toolchain. This rule only identifies candidates; the compiler must confirm any manual change.
 
 |          |          |
 | -------- | -------- |
 | Severity | low      |
 | Type     | rust-ast |
 | Enabled  | yes      |
-| Fixable  | yes      |
+| Fixable  | no       |
 
 **Bad (triggers violation):**
 
@@ -6845,9 +6857,9 @@ _opener in comment_
 
 ### rust_magic_numbers
 
-Flag unnamed numeric literals — extract into named constants.
+Flag numeric literals outside the configured allowlist for review.
 
-> Unnamed numeric literals obscure intent. Named constants make code self-documenting and easier to update.
+> Unnamed numeric literals can obscure intent. Use a named constant when its name explains the value; otherwise tune the allowlist or scope to match the project's policy.
 
 |                |                                              |
 | -------------- | -------------------------------------------- |
@@ -7833,7 +7845,7 @@ pub fn f() {}
 
 Flag pub type definitions whose name repeats the module name as a prefix (`FooId` in `foo.rs`).
 
-> Module information baked into type names is redundant: users can write `foo::Id` and disambiguate locally.
+> Module-qualified APIs can avoid repeating the module in every public type. Flat re-exports and collision-prone APIs are intentional exceptions because this syntax-only rule cannot inspect the final exported namespace.
 
 |          |          |
 | -------- | -------- |
@@ -9074,9 +9086,9 @@ fn two(user: String, region: u32, locale: String) {}
 
 ### rust_param_order_consistency
 
-Flag fns whose shared parameters appear in a different order than an earlier fn in the file.
+Flag related fns whose shared parameters appear in a different order.
 
-> The same conceptual parameters appearing in flipping orders across sibling functions invites transposed-argument bugs and raises call-site friction.
+> Shared parameter order should stay stable within a real API family. Rulewright approximates that relationship with a common final name segment and the same impl or free-function module, so enable this only where that naming convention identifies meaningful families.
 
 |          |          |
 | -------- | -------- |
@@ -9090,15 +9102,15 @@ Flag fns whose shared parameters appear in a different order than an earlier fn 
 _shared pair order flips_
 
 ```rust
-fn create(tenant: u32, user: u32) {}
-fn delete(user: u32, tenant: u32) {}
+fn create_user(tenant: u32, user: u32) {}
+fn delete_user(user: u32, tenant: u32) {}
 ```
 
 _flip with interleaved params_
 
 ```rust
-fn f(user: u32, tenant: u32, extra: bool) {}
-fn g(flag: bool, tenant: u32, user: u32) {}
+fn create_account(user: u32, tenant: u32, extra: bool) {}
+fn delete_account(flag: bool, tenant: u32, user: u32) {}
 ```
 
 _flip across impl fns_
@@ -9106,12 +9118,19 @@ _flip across impl fns_
 ```rust
 struct S;
 impl S {
-    fn f(&self, user: u32, tenant: u32) {}
-    fn g(&self, tenant: u32, user: u32) {}
+    fn create_user(&self, user: u32, tenant: u32) {}
+    fn delete_user(&self, tenant: u32, user: u32) {}
 }
 ```
 
 **Good (passes):**
+
+_unrelated free functions are not compared_
+
+```rust
+fn create(tenant: u32, user: u32) {}
+fn delete(user: u32, tenant: u32) {}
+```
 
 _consistent order_
 
@@ -9153,7 +9172,7 @@ mod tests {
 
 ### rust_println
 
-Ban `println!`/`eprintln!`/`print!`/`eprint!` in library code.
+Ban `println!`/`eprintln!`/`print!`/`eprint!` outside test code.
 
 > Console printing bypasses structured logging. Use tracing or the output module for consistent, filterable output.
 
@@ -9162,7 +9181,7 @@ Ban `println!`/`eprintln!`/`print!`/`eprint!` in library code.
 | Severity | medium   |
 | Type     | rust-ast |
 | Enabled  | no       |
-| Fixable  | yes      |
+| Fixable  | no       |
 
 **Bad (triggers violation):**
 
@@ -10191,13 +10210,14 @@ Flag `#[derive(Debug)]` on structs with sensitive fields like `password`.
 
 > Deriving Debug on types with passwords or tokens risks leaking secrets in logs and error messages.
 
-|                |                                                                                                                                                                |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Severity       | high                                                                                                                                                           |
-| Type           | rust-ast                                                                                                                                                       |
-| Enabled        | yes                                                                                                                                                            |
-| Fixable        | no                                                                                                                                                             |
-| Param: markers | [String], default = ["api_key", "authorization", "bearer", "credential", "credentials", "password", "passwd", "private_key", "secret", "signing_key", "token"] |
+|                       |                                                                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity              | high                                                                                                                                                           |
+| Type                  | rust-ast                                                                                                                                                       |
+| Enabled               | yes                                                                                                                                                            |
+| Fixable               | no                                                                                                                                                             |
+| Param: markers        | [String], default = ["api_key", "authorization", "bearer", "credential", "credentials", "password", "passwd", "private_key", "secret", "signing_key", "token"] |
+| Param: allowed_fields | [String], default = []                                                                                                                                         |
 
 **Bad (triggers violation):**
 
@@ -11362,7 +11382,7 @@ pub mod h;
 
 Flag `container[expr]` indexing with non-literal indices.
 
-> Indexing with a variable panics on out-of-bounds. Use .get() or add a // BOUNDS: comment explaining why the index is safe.
+> Indexing with a variable panics on out-of-bounds. Prefer `.get()` when failure is possible. When an established invariant makes indexing correct, place a `// BOUNDS:` comment directly above it that names the concrete check or relationship; boilerplate comments do not make the code safer.
 
 |          |          |
 | -------- | -------- |
@@ -11400,7 +11420,8 @@ _with BOUNDS comment_
 
 ```rust
 fn f(v: Vec<i32>, i: usize) {
-    // BOUNDS: index validated by caller
+    assert!(i < v.len());
+    // BOUNDS: the assertion above establishes i < v.len().
     let _ = v[i];
 }
 ```
