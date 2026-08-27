@@ -142,16 +142,18 @@ mod tests {
     }
 
     #[gtest]
-    fn normalized_paths_have_cross_platform_semantics() -> Result<()> {
+    fn backslashes_follow_native_path_semantics() -> Result<()> {
         verify_true!(matches_ignore(
             "packages/app/src/main.rs",
             &["packages/app/**"]
         ))?;
+        let native_matches = matches_ignore(r"packages\app\src\main.rs", &["packages/app/**"]);
 
-        verify_false!(matches_ignore(
-            r"packages\app\src\main.rs",
-            &["packages/app/**"]
-        ))
+        if cfg!(windows) {
+            verify_true!(native_matches)
+        } else {
+            verify_false!(native_matches)
+        }
     }
 
     #[gtest]
