@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rulewright Setup"
+  short_description: "Add Rulewright to an existing Rust project"
+  default_prompt: "Use $rulewright-setup to install and configure Rulewright in this Rust project."

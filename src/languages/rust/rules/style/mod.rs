@@ -1,0 +1,35 @@
+//! Rust source-style rules.
+
+mod aligned;
+mod attr_order;
+mod banner_comments;
+mod comment_space;
+mod commented_code;
+mod conversion_self_convention;
+mod derive_order;
+mod doc_comment_period;
+mod duplicate_words;
+mod excessive_float_precision;
+mod getter_prefix;
+mod impl_member_order;
+mod inherent_before_trait_impl;
+mod long_compound_name;
+mod loop_to_while;
+mod magic_numbers;
+mod marked_region;
+mod match_layout;
+mod mod_order;
+mod module_prefix_in_name;
+mod naming;
+mod padding;
+mod pub_use_grouping;
+mod pub_use_position;
+mod redundant_field_names;
+mod sorted;
+mod support;
+mod thiserror_qualified;
+mod type_def_ordering;
+mod weasel_words;
+mod where_clauses;
+mod whitespace;
+mod yoda_conditions;

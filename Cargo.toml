@@ -1,0 +1,86 @@
+[package]
+name = "rulewright"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Executable engineering standards for Rust workspaces"
+repository = "https://github.com/wowlabdev/rulewright"
+homepage = "https://github.com/wowlabdev/rulewright"
+documentation = "https://docs.rs/rulewright"
+license = "MIT"
+readme = "README.md"
+keywords = ["lint", "static-analysis", "code-quality", "cargo", "rust"]
+categories = ["command-line-utilities", "development-tools"]
+publish = ["crates-io"]
+include = [
+    "/src/**",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/LICENSE",
+    "/README.md",
+    "/RULES.md",
+    "/.github/workflows/*.yml",
+    "/scripts/**",
+    "/CONTRIBUTING.md",
+    "/SECURITY.md",
+    "/docs/**",
+    "/skills/**",
+    "/tests/**",
+]
+
+[[bin]]
+name = "rulewright"
+path = "src/main.rs"
+
+[dependencies]
+bincode = { version = "2", features = ["serde"] }
+blake3 = "1"
+cargo_metadata = "0.23"
+clap = { version = "4.6", features = ["derive"] }
+console = "0.16"
+fs4 = { version = "1", features = ["sync"] }
+ref-cast = "1"
+gix = { version = "0.80", default-features = false, features = ["status"] }
+glob-match = "0.2"
+ignore = "0.4"
+inventory = "0.3"
+line-index = "=0.1.2"
+paste = "1"
+ra_ap_syntax = "=0.0.343"
+rayon = "1.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+semver = "1"
+tabled = { version = "0.20", features = ["std"] }
+taplo = "0.14"
+tempfile = "3"
+thiserror = "2"
+toml = "1.1"
+winnow = "1.0"
+
+[dev-dependencies]
+googletest = "0.14"
+
+[lints.rust]
+ambiguous_negative_literals = "warn"
+missing_debug_implementations = "warn"
+redundant_imports = "warn"
+redundant_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+unreachable_pub = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
+too_many_lines = "allow"

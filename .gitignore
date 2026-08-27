@@ -1,0 +1,21 @@
+# Rust build and package output
+/target/
+/examples/custom-rule-pack/target/
+/*.crate
+
+# Rulewright runtime state
+/.rulewright.lock
+
+# Coverage and profiling artifacts
+/coverage/
+*.profraw
+*.profdata
+
+# Editors and operating systems
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp

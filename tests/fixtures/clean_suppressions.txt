@@ -1,0 +1,16 @@
+fn active_diagnostic() {
+    // #rw(rust_dbg, rust_panic) active debug and stale panic targets
+    dbg!(1);
+}
+
+fn stale_diagnostic() {
+    // #rw(rust_panic) stale panic target
+    let value = 1;
+    assert_eq!(value, 1, "fixture value must stay stable");
+}
+
+const DIRECTIVE_LOOKALIKE: &str = r#"
+// #rw(rust_panic) raw string content must not be edited
+"#;
+
+// Ordinary comments must remain byte-for-byte intact.

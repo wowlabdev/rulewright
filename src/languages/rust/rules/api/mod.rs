@@ -1,0 +1,35 @@
+//! Rust API-design rules.
+
+mod assoc_fn_no_self;
+mod builder_conventions;
+mod builder_fallible_setter;
+mod builder_param;
+mod collection_trait_completeness;
+mod const_fn_candidate;
+mod ctor_new;
+mod ctor_param_count;
+mod dyn_wrapper_in_api;
+mod error_missing_traits;
+mod error_type_unit;
+mod fallible_in_iterator;
+mod glob_reexport;
+mod impl_into_for_owned;
+mod manual_error_impl;
+mod map_err_pure_wrap;
+mod missing_debug;
+mod missing_error_context;
+mod no_prelude;
+mod non_exhaustive_on_public;
+mod param_clump;
+mod pub_api_docs;
+mod pub_api_generic_nesting;
+mod pub_api_smart_pointers;
+mod public_error_enum;
+mod similar_fns;
+mod similar_structs;
+mod single_item_path;
+mod string_error;
+mod support;
+mod trait_logic_not_inherent;
+mod unbalanced_crate_root;
+mod unwrap_in_lib;

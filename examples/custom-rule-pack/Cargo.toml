@@ -1,0 +1,18 @@
+[package]
+name = "rulewright-custom-rule-pack"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rulewright = { path = "../.." }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "custom-rulewright"
+path = "src/main.rs"
+
+# Keep this fixture independent from the package that it demonstrates.
+[workspace]
