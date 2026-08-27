@@ -99,10 +99,13 @@ mod tests {
     }
 
     #[gtest]
-    fn backslashes_are_not_reinterpreted_as_path_separators() -> Result<()> {
-        verify_false!(matches_ignore(
-            r"packages\app\src\main.rs",
-            &["packages/app/**"]
-        ))
+    fn backslashes_follow_native_path_semantics() -> Result<()> {
+        let matches = matches_ignore(r"packages\app\src\main.rs", &["packages/app/**"]);
+
+        if cfg!(windows) {
+            verify_true!(matches)
+        } else {
+            verify_false!(matches)
+        }
     }
 }

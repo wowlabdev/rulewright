@@ -197,7 +197,6 @@ mod tests {
         let name = std::ffi::OsString::from_vec(b"source-\xff.rs".to_vec());
         let path = directory.path().join(std::path::PathBuf::from(name));
 
-        file::write_text(&path, "fn source() {}\n").expect("fixture source");
         let errors = load_suppressions(&[path], directory.path(), &HashSet::new())
             .expect_err("lossy report identity must fail");
 

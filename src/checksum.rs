@@ -63,11 +63,14 @@ impl FromStr for Checksum {
         }
 
         let mut bytes = [0_u8; CHECKSUM_BYTES];
+        let (pairs, remainder) = value.as_bytes().as_chunks::<HEX_PAIR_BYTES>();
 
-        for (byte, pair) in bytes
-            .iter_mut()
-            .zip(value.as_bytes().chunks_exact(HEX_PAIR_BYTES))
-        {
+        debug_assert!(
+            remainder.is_empty(),
+            "a validated checksum length must contain only complete hexadecimal pairs"
+        );
+
+        for (byte, pair) in bytes.iter_mut().zip(pairs) {
             let high = pair.first().copied().and_then(decode_hex);
             let low = pair.get(SECOND_ITEM).copied().and_then(decode_hex);
             let (Some(high), Some(low)) = (high, low) else {

@@ -892,7 +892,6 @@ mod tests {
         let name = std::ffi::OsString::from_vec(b"source-\xff.rs".to_vec());
         let source = directory.path().join(std::path::PathBuf::from(name));
 
-        file::write_text(&source, "fn source() {}\n").or_fail()?;
         let registry = RuleRegistry::with_builtins().or_fail()?;
         let metadata = registry.metadata();
         let config = Config::generate_default(

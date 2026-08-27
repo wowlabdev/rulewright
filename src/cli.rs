@@ -724,6 +724,10 @@ mod tests {
             .expect("root source should be written");
     }
 
+    fn canonical_path(path: &Path) -> std::path::PathBuf {
+        std::fs::canonicalize(path).expect("test path should be canonicalizable")
+    }
+
     #[test]
     fn discovery_ascends_from_a_root_package_descendant() {
         let temporary = crate::temporary::Directory::new().expect("temporary directory");
@@ -738,7 +742,7 @@ mod tests {
         )
         .expect("root package should be discovered");
 
-        assert_eq!(project.root.as_path(), root);
+        assert_eq!(canonical_path(project.root.as_path()), canonical_path(root));
     }
 
     #[test]
@@ -772,7 +776,10 @@ mod tests {
         )
         .expect("explicit workspace should win");
 
-        assert_eq!(project.root.as_path(), selected.as_path());
+        assert_eq!(
+            canonical_path(project.root.as_path()),
+            canonical_path(&selected)
+        );
         assert_eq!(
             resolve_filters(&project, &["nested-member".to_owned()]).expect("package filter"),
             vec!["nested/member"]
