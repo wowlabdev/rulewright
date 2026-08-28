@@ -29,7 +29,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     unsafe_comment,
     "Require `// SAFETY:` comment on `unsafe` blocks.",
-    "Every unsafe block must document why it is sound. Without a SAFETY comment, reviewers cannot verify correctness.",
+    "Every unsafe block must expose its proof obligation to reviewers. Put a SAFETY comment directly above it that names the concrete validity, aliasing, lifetime, or synchronization invariant; generic claims that the code is safe are not evidence.",
     High,
 );
 

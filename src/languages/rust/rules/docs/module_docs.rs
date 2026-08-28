@@ -3,7 +3,7 @@ use googletest::prelude::*;
 
 use crate::{Example, FileCtx, Violation, violation};
 
-/// Pass/fail cases checked against a gated `mod.rs` rel path.
+/// Pass/fail cases checked against a library crate root.
 #[rustfmt::skip]
 const EXAMPLES: &[Example] = &[
     Example {
@@ -48,15 +48,15 @@ const EXAMPLES: &[Example] = &[
     },
 ];
 
-crate::line_rule!(
+crate::full_line_rule!(
     module_docs,
-    "Require `//!` module docs at the top of `lib.rs` and `mod.rs` files.",
-    "Module docs are the entry point for API navigation; each module file should say what it contains.",
+    "Require `//!` crate docs at the top of Rust library roots.",
+    "Library crate docs are the public entry point for API navigation. Private module files are deliberately excluded.",
     Medium,
 );
 
 fn check_module_docs(ctx: &FileCtx<'_>) -> Vec<Violation> {
-    if ctx.package_name.is_none() || !is_module_entry(ctx) {
+    if ctx.path.file_name().and_then(|value| value.to_str()) != Some("lib.rs") {
         return Vec::new();
     }
 
@@ -89,16 +89,8 @@ fn check_module_docs(ctx: &FileCtx<'_>) -> Vec<Violation> {
     vec![violation(
         ctx.rel,
         1,
-        "`lib.rs`/`mod.rs` must begin with `//!` module docs",
+        "Rust library crate root must begin with `//!` crate docs",
     )]
-}
-
-fn is_module_entry(ctx: &FileCtx<'_>) -> bool {
-    let Some(name) = ctx.path.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-
-    name == "lib.rs" || name == "mod.rs"
 }
 
 #[cfg(test)]
@@ -106,7 +98,7 @@ mod tests {
     use super::*;
     use crate::test_support::check_source_at;
 
-    const GATED_REL: &str = "crates/demo/src/util/mod.rs";
+    const GATED_REL: &str = "crates/demo/src/lib.rs";
 
     #[gtest]
     fn examples() -> Result<()> {
@@ -120,8 +112,8 @@ mod tests {
     }
 
     #[gtest]
-    fn lib_rs_is_gated() -> Result<()> {
-        let violations = check_source_at("crates/demo/src/lib.rs", "pub mod x;", check_module_docs);
+    fn library_root_is_gated() -> Result<()> {
+        let violations = check_source_at(GATED_REL, "pub mod x;", check_module_docs);
 
         verify_false!(violations.is_empty())?;
 
@@ -129,8 +121,15 @@ mod tests {
     }
 
     #[gtest]
-    fn ungated_paths_pass() -> Result<()> {
-        let rels = ["test.rs", "crates/demo/src/util.rs", "crates/demo/mod.rs"];
+    fn private_modules_binaries_build_scripts_and_non_rust_files_pass() -> Result<()> {
+        let rels = [
+            "test.rs",
+            "crates/demo/src/main.rs",
+            "crates/demo/src/util.rs",
+            "crates/demo/src/util/mod.rs",
+            "crates/demo/build.rs",
+            "crates/demo/src/template.txt",
+        ];
 
         for rel in rels {
             let violations = check_source_at(rel, "pub fn f() {}", check_module_docs);

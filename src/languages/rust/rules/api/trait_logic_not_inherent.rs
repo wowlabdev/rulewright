@@ -51,7 +51,6 @@ struct LocalFacts {
     inherent: HashMap<String, HashSet<String>>,
 }
 
-// #rw(fn: rust_alloc_in_loop) the collector owns each trait name it stores.
 fn collect_local_facts(ctx: &AstCtx<'_>) -> LocalFacts {
     let mut facts = LocalFacts {
         traits: HashSet::default(),
@@ -74,7 +73,6 @@ fn collect_local_facts(ctx: &AstCtx<'_>) -> LocalFacts {
     facts
 }
 
-// #rw(fn: rust_alloc_in_loop) the collector owns each method name it stores.
 fn record_inherent_methods(item: &ast::Impl, facts: &mut LocalFacts) {
     let Some(name) = item.self_ty().and_then(|ty| type_name(&ty)) else {
         return;
@@ -97,10 +95,10 @@ fn record_inherent_methods(item: &ast::Impl, facts: &mut LocalFacts) {
 }
 
 fn check_trait_logic_not_inherent(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let threshold = ctx
-        .file
-        .config
-        .get_usize("rust_trait_logic_not_inherent", &PARAMS[0]);
+    let threshold = ctx.file.config.get_usize(
+        "rust_trait_logic_not_inherent",
+        &TRAIT_LOGIC_NOT_INHERENT_PARAMS[0],
+    );
     let facts = collect_local_facts(ctx);
 
     ctx.nodes::<ast::Impl>()

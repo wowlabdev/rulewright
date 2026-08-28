@@ -32,10 +32,10 @@ fn check_toml_cargo_workspace_dep_features(ctx: &TomlCtx<'_>) -> Vec<Violation> 
     let Some(dependencies) = nested_table(&document, &["workspace", "dependencies"]) else {
         return Vec::new();
     };
-    let allowed = ctx
-        .file
-        .config
-        .get_str_array("toml_cargo_workspace_dep_features", &PARAMS[0]);
+    let allowed = ctx.file.config.get_str_array(
+        "toml_cargo_workspace_dep_features",
+        &TOML_CARGO_WORKSPACE_DEP_FEATURES_PARAMS[0],
+    );
 
     let mut violations = Vec::new();
 

@@ -115,7 +115,9 @@ fn is_closure_type(mut ty: ast::Type, generics: &HashSet<String>) -> bool {
         ast::Type::ImplTraitType(impl_trait) => impl_trait
             .type_bound_list()
             .is_some_and(|bounds| bounds.bounds().any(is_fn_bound)),
+
         ast::Type::PathType(_) => type_name(&ty).is_some_and(|name| generics.contains(&name)),
+
         _ => false,
     }
 }

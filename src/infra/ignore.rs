@@ -33,6 +33,7 @@ impl SuppressionEntry {
     pub(crate) fn covers_line(&self, line: usize) -> bool {
         match self.scope {
             Scope::File => true,
+
             Scope::NextLine | Scope::Block | Scope::Fn => self
                 .end_line
                 .is_some_and(|end| line > self.line && line <= end),
@@ -65,18 +66,24 @@ fn brace_depth_change(line: &str) -> (i32, bool) {
     while let Some(ch) = parse::try_parse(&mut input, any) {
         match ch {
             '/' if parse::matches(input, '/') => return (delta, found_open),
+
             '"' => scanner::skip_string(&mut input),
+
             'r' if parse::matches(input, '#') || parse::matches(input, '"') => {
                 scanner::try_skip_raw_string(&mut input);
             }
+
             '\'' => scanner::skip_char_literal(&mut input),
+
             '{' => {
                 delta += 1;
                 found_open = true;
             }
+
             '}' => {
                 delta -= 1;
             }
+
             _ => {}
         }
     }
@@ -115,7 +122,6 @@ pub(crate) fn suppressed_lines(
                 if let Some(known) = registered_rules {
                     for name in &d.rules {
                         if !known.contains(name.as_str()) {
-                            // #rw(block: rust_alloc_in_loop) error messages are rare
                             let msg = format!(
                                 "unknown rule `{name}` in #rw directive — \
                                  check for typos (use `rulewright --list` to see all rules)"
@@ -150,14 +156,15 @@ pub(crate) fn suppressed_lines(
 
                         None
                     }
+
                     Scope::NextLine => {
                         map.entry(i + NEXT_LINE_OFFSET)
                             .or_default()
-                            // #rw(rust_clone_in_loop) targets remain owned by both the line index and occurrence record
                             .extend(rule_names.clone());
 
                         Some(i + NEXT_LINE_OFFSET)
                     }
+
                     Scope::Block => {
                         let mut end_line = directive_line;
 
@@ -169,12 +176,12 @@ pub(crate) fn suppressed_lines(
                             }
 
                             end_line = j + 1;
-                            // #rw(rust_clone_in_loop) need owned copy of rule names for each suppressed line
                             map.entry(j + 1).or_default().extend(rule_names.clone());
                         }
 
                         Some(end_line)
                     }
+
                     Scope::Fn => {
                         let mut depth: i32 = 0;
                         let mut found_open = false;
@@ -186,7 +193,6 @@ pub(crate) fn suppressed_lines(
                             depth += delta;
                             found_open |= has_open;
                             end_line = j + 1;
-                            // #rw(rust_clone_in_loop) need owned copy of rule names for each suppressed line
                             map.entry(j + 1).or_default().extend(rule_names.clone());
 
                             if found_open && depth <= 0 {
@@ -198,7 +204,6 @@ pub(crate) fn suppressed_lines(
                     }
                 };
 
-                // #rw(block: rust_alloc_in_loop) entry needs owned copies; map consumes rule names by scope
                 entries.push(SuppressionEntry {
                     rel: rel.to_string(),
                     line: directive_line,
@@ -210,6 +215,7 @@ pub(crate) fn suppressed_lines(
                     reason: d.reason,
                 });
             }
+
             Some(DirectiveResult::MissingReason(scope)) => {
                 let name = scope.prefix();
 
@@ -219,9 +225,11 @@ pub(crate) fn suppressed_lines(
                     format!("{name} requires a reason after the closing `)`"),
                 ));
             }
+
             Some(DirectiveResult::Malformed(msg)) => {
                 errors.push(violation(rel, i + 1, format!("#rw directive error: {msg}")));
             }
+
             None => {}
         }
     }
@@ -311,14 +319,14 @@ mod tests {
     #[gtest]
     fn multi_rule_works() -> Result<()> {
         let lines = vec![
-            "// #rw(rust_alloc_in_loop, rust_clone_in_loop) error path",
+            "// #rw(rust_panic, rust_dbg) error path",
             "let msg = format!(\"err: {}\", e);",
         ];
         let mut errors = make_errors();
         let sup = suppressed_lines("t.rs", &lines, &mut errors, None);
         let rules = sup.lines.get(&2).or_fail()?;
 
-        verify_eq!(rules, &["rust_alloc_in_loop", "rust_clone_in_loop"])?;
+        verify_eq!(rules, &["rust_panic", "rust_dbg"])?;
         verify_true!(errors.is_empty())?;
 
         Ok(())
@@ -363,7 +371,7 @@ mod tests {
     #[gtest]
     fn fn_scope_works() -> Result<()> {
         let lines = vec![
-            "// #rw(fn: rust_alloc_in_loop) error reporting function",
+            "// #rw(fn: rust_panic) error reporting function",
             "fn validate() {",
             "    let x = format!(\"a\");",
             "    let y = format!(\"b\");",
@@ -388,7 +396,7 @@ mod tests {
     fn fn_scope_ignores_braces_in_strings() -> Result<()> {
         let lines = vec![
             // #rw(rust_duplicate_strings) This linter fixture intentionally repeats source text across independent rule-harness scenarios.
-            "// #rw(fn: rust_alloc_in_loop) error reporting function",
+            "// #rw(fn: rust_panic) error reporting function",
             "fn validate() {",
             "    let s = \"{ not a real brace }\";",
             "    let x = format!(\"a\");",
@@ -413,7 +421,7 @@ mod tests {
     fn fn_scope_ignores_braces_in_comments() -> Result<()> {
         let lines = vec![
             // #rw(rust_duplicate_strings) This linter fixture intentionally repeats source text across independent rule-harness scenarios.
-            "// #rw(fn: rust_alloc_in_loop) error reporting function",
+            "// #rw(fn: rust_panic) error reporting function",
             "fn validate() {",
             "    // closing } here doesn't count",
             "    let x = format!(\"a\");",
@@ -438,7 +446,7 @@ mod tests {
     fn fn_scope_ignores_braces_in_char_literals() -> Result<()> {
         let lines = vec![
             // #rw(rust_duplicate_strings) This linter fixture intentionally repeats source text across independent rule-harness scenarios.
-            "// #rw(fn: rust_alloc_in_loop) error reporting function",
+            "// #rw(fn: rust_panic) error reporting function",
             "fn validate() {",
             "    let c = '{';",
             "    let d = '}';",

@@ -81,7 +81,6 @@ fn module_blocks(items: Vec<ast::Item>) -> impl Iterator<Item = Vec<ast::Module>
     blocks.into_iter().filter(|block| block.len() > 1)
 }
 
-// #rw(fn: rust_clone_in_loop) syntax-editor sorting requires detached copies of source items
 fn fix_mod_order(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
     let mut changed = false;
@@ -113,5 +112,5 @@ fn module_sort_key(module: &ast::Module) -> Option<String> {
 
 crate::rulewright_ast_test!(check_mod_order, {
     crate::example_tests!(EXAMPLES, check_mod_order);
-    crate::fix_tests!(ast_tree, check_mod_order, fix_mod_order);
+    crate::fix_tests!(EXAMPLES, ast_tree, check_mod_order, fix_mod_order);
 });

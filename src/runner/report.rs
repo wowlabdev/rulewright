@@ -1,4 +1,3 @@
-// #rw(file: rust_alloc_in_loop) violation report renderer
 // #rw(file: rust_default_hasher) trusted rule-name sets in the cold report path; fast-hasher dependency not warranted
 
 use std::{collections::BTreeMap, io::Write as _, process::ExitCode};
@@ -26,6 +25,7 @@ pub fn report_suppressions(
 ) -> ExitCode {
     let paths = match walk::rs_paths(workspace_root, package_filter) {
         Ok(paths) => paths,
+
         Err(error) => {
             if !quiet {
                 output::error(&format!("suppression report aborted: {error}"));
@@ -69,7 +69,6 @@ pub fn report_suppressions(
             by_rule.entry("*".to_string()).or_default().push(entry);
         } else {
             for rule in &entry.rules {
-                // #rw(rust_clone_in_loop) need owned key for map
                 by_rule.entry(rule.clone()).or_default().push(entry);
             }
         }
@@ -137,6 +136,7 @@ fn load_suppressions(
         };
         let contents = match file::read_text(path) {
             Ok(contents) => contents,
+
             Err(error) => {
                 failures.push(format!("{rel}: failed to read source: {error}"));
                 continue;
@@ -206,19 +206,22 @@ mod tests {
 
 pub(super) fn print_grouped(
     violations: &[Violation],
-    registry: &RuleRegistry,
+    _registry: &RuleRegistry,
     packages: &[super::PackageRoot],
     root: &Path,
 ) {
     let mut by_package: BTreeMap<&str, Vec<&Violation>> = BTreeMap::new();
-    let mut by_rule: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut by_rule: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
 
     for v in violations {
         by_package
             .entry(package_name(&v.rel, packages, root))
             .or_default()
             .push(v);
-        *by_rule.entry(v.rule_name()).or_default() += 1;
+        let (total, fixable) = by_rule.entry(v.rule_name()).or_default();
+
+        *total += 1;
+        *fixable += usize::from(v.is_fixable());
     }
 
     for (package_name, violations) in &by_package {
@@ -239,20 +242,12 @@ pub(super) fn print_grouped(
     output::separator();
     output::blank();
 
-    let mut fixable_rules: std::collections::HashSet<&str> = std::collections::HashSet::new();
-
-    for rule in registry.rules() {
-        if rule.fix.is_some() {
-            fixable_rules.insert(rule.info.name);
-        }
-    }
-
     let mut rule_counts: Vec<RuleSummaryRow> = by_rule
         .into_iter()
-        .map(|(rule, count)| RuleSummaryRow {
+        .map(|(rule, (count, fixable))| RuleSummaryRow {
             rule: rule.to_string(),
-            fixable: if fixable_rules.contains(rule) {
-                "yes".to_string()
+            fixable: if fixable > 0 {
+                fixable.to_string()
             } else {
                 String::new()
             },
@@ -267,7 +262,7 @@ pub(super) fn print_grouped(
 
     let fixable_count: usize = violations
         .iter()
-        .filter(|v| fixable_rules.contains(v.rule_name()))
+        .filter(|violation| violation.is_fixable())
         .count();
 
     output::error(&format!(
@@ -298,6 +293,8 @@ struct StructuredFinding<'a> {
     rule: &'a str,
     severity: &'a str,
     message: &'a str,
+    description: &'a str,
+    guidance: &'a str,
     fixable: bool,
 }
 
@@ -319,12 +316,14 @@ pub(super) fn print_json(violations: &[Violation], registry: &RuleRegistry) {
                 rule: violation.rule_name(),
                 severity: rule.map_or("unknown", |rule| rule.info.severity.as_str()),
                 message: &violation.message,
-                fixable: rule.is_some_and(|rule| rule.fix.is_some()),
+                description: rule.map_or("", |rule| rule.info.description),
+                guidance: rule.map_or("", |rule| rule.info.justification),
+                fixable: violation.is_fixable(),
             }
         })
         .collect();
     let document = FindingsDocument {
-        schema_version: 1,
+        schema_version: 2,
         findings,
     };
     let stdout = std::io::stdout();
@@ -385,13 +384,12 @@ mod structured_tests {
 struct RuleSummaryRow {
     #[tabled(rename = "Rule")]
     rule: String,
-    #[tabled(rename = "Fixable")]
+    #[tabled(rename = "Auto-fix")]
     fixable: String,
     #[tabled(rename = "Count")]
     count: usize,
 }
 
-// #rw(fn: rust_alloc_in_loop) terminal output requires format! per fix
 pub(super) fn print_dry_run(fixes: &[(String, Fix)]) {
     let mut by_file: BTreeMap<&str, Vec<&Fix>> = BTreeMap::new();
 

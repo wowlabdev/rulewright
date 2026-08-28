@@ -124,6 +124,7 @@ fn is_thin_shim(function: &ast::Fn) -> bool {
 fn is_into_adapted_arg(arg: &ast::Expr) -> bool {
     match arg {
         ast::Expr::PathExpr(_) => true,
+
         ast::Expr::MethodCallExpr(call) => {
             call.name_ref().is_some_and(|name| name.text() == "into")
                 && call
@@ -131,6 +132,7 @@ fn is_into_adapted_arg(arg: &ast::Expr) -> bool {
                     .is_none_or(|args| args.args().next().is_none())
                 && matches!(call.receiver(), Some(ast::Expr::PathExpr(_)))
         }
+
         _ => false,
     }
 }

@@ -108,7 +108,6 @@ fn origins_are_grouped(block: &[ast::Use]) -> bool {
     true
 }
 
-// #rw(fn: rust_clone_in_loop) syntax-editor sorting requires detached copies of source items
 fn fix_pub_use_grouping(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
     let mut changed = false;
@@ -150,5 +149,10 @@ fn fix_pub_use_grouping(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<S
 
 crate::rulewright_ast_test!(check_pub_use_grouping, {
     crate::example_tests!(EXAMPLES, check_pub_use_grouping);
-    crate::fix_tests!(ast_tree, check_pub_use_grouping, fix_pub_use_grouping);
+    crate::fix_tests!(
+        EXAMPLES,
+        ast_tree,
+        check_pub_use_grouping,
+        fix_pub_use_grouping
+    );
 });

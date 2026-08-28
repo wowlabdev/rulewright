@@ -21,6 +21,11 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
+        label: "fallible consuming terminal conversion",
+        code: "struct HostBuilder; struct Draft; impl HostBuilder { fn into_draft(self) -> Result<Draft, String> { Ok(Draft) } }",
+        pass: true,
+    },
+    Example {
         label: "fallible associated fn",
         code: "struct HostBuilder;\nimpl HostBuilder {\n    fn parse(input: &str) -> Result<Self, String> {\n        Ok(HostBuilder)\n    }\n}",
         pass: true,
@@ -82,7 +87,7 @@ fn check_builder_fallible_setter(ctx: &AstCtx<'_>) -> Vec<Violation> {
                     let name = function.name()?;
                     let text = name.text().to_string();
 
-                    (!ALLOWED_FALLIBLE.contains(&text.as_str())).then(|| {
+                    (!ALLOWED_FALLIBLE.contains(&text.as_str()) && !text.starts_with("into_")).then(|| {
                         ctx.violation(
                             &name,
                             format!(

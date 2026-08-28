@@ -34,7 +34,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     mem_forget,
     "Require `LEAK` or `SAFETY` comment on `std::mem::forget()` calls.",
-    "mem::forget permanently leaks memory. A justification comment proves the leak is intentional, not a bug.",
+    "mem::forget skips destruction permanently. Prefer explicit ownership transfer or ManuallyDrop; when forgetting is required by an external ownership contract, document who owns the resource and why no destructor may run.",
     High,
 );
 

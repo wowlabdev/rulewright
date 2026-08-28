@@ -1,5 +1,6 @@
-use ra_ap_syntax::{AstNode, ast, ast::LiteralKind};
+use ra_ap_syntax::{ast, ast::LiteralKind};
 
+use super::super::support::is_in_const_or_static;
 use crate::{AstCtx, Example, Fix, Violation};
 
 #[rustfmt::skip]
@@ -47,7 +48,7 @@ crate::ast_rule!(
 fn check_from_instead_of_as(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let numeric_casts = ctx
         .nodes::<ast::CastExpr>()
-        .filter(|cast| !ctx.is_in_test(cast) && !is_in_const_context(cast))
+        .filter(|cast| !ctx.is_in_test(cast) && !is_in_const_or_static(cast))
         .filter(|cast| {
             cast.expr().is_some_and(|expr| has_numeric_suffix(&expr))
                 && cast.ty().is_some_and(|ty| is_numeric_type(&ty))
@@ -70,6 +71,7 @@ fn has_numeric_suffix(expr: &ast::Expr) -> bool {
             LiteralKind::FloatNumber(number) => number.suffix().is_some(),
             _ => false,
         },
+
         _ => false,
     }
 }
@@ -85,15 +87,6 @@ fn is_numeric_type(ty: &ast::Type) -> bool {
         .and_then(|segment| segment.name_ref());
 
     name.is_some_and(|name| NUMERIC_TYPES.contains(&name.text().as_str()))
-}
-
-fn is_in_const_context<N>(node: &N) -> bool
-where
-    N: AstNode,
-{
-    node.syntax().ancestors().any(|ancestor| {
-        ast::Const::can_cast(ancestor.kind()) || ast::Static::can_cast(ancestor.kind())
-    })
 }
 
 const NUMERIC_TYPES: &[&str] = &[
@@ -159,5 +152,10 @@ fn literal_start(number_part: &str) -> Option<usize> {
 
 crate::rulewright_ast_test!(check_from_instead_of_as, {
     crate::example_tests!(EXAMPLES, check_from_instead_of_as);
-    crate::fix_tests!(ast, check_from_instead_of_as, fix_from_instead_of_as);
+    crate::fix_tests!(
+        EXAMPLES,
+        ast,
+        check_from_instead_of_as,
+        fix_from_instead_of_as
+    );
 });

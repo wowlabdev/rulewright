@@ -40,6 +40,7 @@ Run `rulewright --help` before changing the project. Use the installed CLI's com
 - Add `/.rulewright.lock` to the workspace-root `.gitignore`, creating the file if necessary.
 - Do not change rule enablement or thresholds unless the user asked to tune the policy. In particular, do not disable rules merely to make the first run green.
 - Rulewright already honors `.gitignore` and Cargo's target directory. Create or extend `.rulewrightignore` only for generated, vendored, or external paths that the repository genuinely does not want analyzed.
+- Rulewright classifies Cargo test, benchmark, and example targets automatically. For a workspace member containing only test infrastructure, add `[package.metadata.rulewright] test-only = true` to that member instead of maintaining path ignores for every rule. Do not apply this metadata to packages that contain production library or binary code.
 
 Once `rulewright.toml` exists, use `rulewright --workspace-root <ROOT> --llm` as the agent-facing reference for the installed version and resolved configuration. It emits Markdown covering severity levels, suppression syntax, findings, and configured rule metadata; a complete catalog can be large, so redirect it to a temporary file and inspect the overview plus the rules relevant to the current findings. Repeating `--rule <RULE>` before `--llm` produces a focused reference when the complete catalog is unnecessary.
 

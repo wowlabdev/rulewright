@@ -1,4 +1,7 @@
-use ra_ap_syntax::ast;
+use ra_ap_syntax::{
+    AstNode,
+    ast::{self, HasAttrs},
+};
 
 use crate::{AstCtx, Example, Violation};
 
@@ -39,12 +42,17 @@ const EXAMPLES: &[Example] = &[
         code: "#[cfg(test)]\nmod tests {\n    fn f() { let x = 42u64 as u8; }\n}",
         pass: true,
     },
+    Example {
+        label: "documented conversion policy helper",
+        code: "#[expect(clippy::cast_possible_truncation, reason = \"wire payload deliberately stores f32\")]\nfn payload(value: f64) -> f32 { value as f32 }",
+        pass: true,
+    },
 ];
 
 crate::ast_rule!(
     lossy_cast,
     "Flag `as` casts to types that lose precision (`f32`, `u8`, `u16`, `i8`, `i16`).",
-    "Casting to a smaller type (u64 as u8) silently truncates. Use try_into() to catch overflow at runtime.",
+    "Casting to a smaller integer silently truncates, so use `TryFrom` or byte-level extraction. Float narrowing has no fallible standard conversion: centralize it in a named policy helper with bounds or rounding behavior, and document the deliberate Clippy cast expectation there instead of scattering casts.",
     Medium,
 );
 
@@ -52,7 +60,7 @@ const LOSSY_TARGETS: &[&str] = &["f32", "u8", "u16", "i8", "i16"];
 
 fn check_lossy_cast(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::CastExpr>()
-        .filter(|cast| !ctx.is_in_test(cast))
+        .filter(|cast| !ctx.is_in_test(cast) && !has_documented_cast_policy(cast))
         .filter_map(|cast| {
             let ast::Type::PathType(path) = cast.ty()? else {
                 return None;
@@ -71,6 +79,23 @@ fn check_lossy_cast(ctx: &AstCtx<'_>) -> Vec<Violation> {
                 })
         })
         .collect()
+}
+
+fn has_documented_cast_policy(cast: &ast::CastExpr) -> bool {
+    cast.syntax()
+        .ancestors()
+        .find_map(ast::Fn::cast)
+        .is_some_and(|function| {
+            function.attrs().any(|attribute| {
+                let source = attribute.syntax().text().to_string();
+
+                source.contains("expect(")
+                    && source.contains("reason")
+                    && (source.contains("clippy::cast_possible_truncation")
+                        || source.contains("clippy::cast_precision_loss")
+                        || source.contains("clippy::cast_sign_loss"))
+            })
+        })
 }
 
 crate::rulewright_ast_test!(check_lossy_cast, {

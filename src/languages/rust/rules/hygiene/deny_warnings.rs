@@ -58,5 +58,5 @@ fn fix_deny_warnings(ctx: &FileCtx<'_>, v: &Violation) -> Option<Fix> {
 
 crate::rulewright_test!(check_deny_warnings, {
     crate::example_tests!(EXAMPLES, check_deny_warnings);
-    crate::fix_tests!(line, check_deny_warnings, fix_deny_warnings);
+    crate::fix_tests!(EXAMPLES, line, check_deny_warnings, fix_deny_warnings);
 });

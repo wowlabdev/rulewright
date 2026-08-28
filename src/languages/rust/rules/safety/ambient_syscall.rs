@@ -101,7 +101,9 @@ fn check_ambient_syscall(ctx: &AstCtx<'_>) -> Vec<Violation> {
 fn is_ambient_call(segments: &[String]) -> bool {
     match segments {
         [] => false,
+
         [only] => only == "thread_rng",
+
         [.., a, b] => {
             is_type_syscall(a, b)
                 || is_std_module_call(segments, a, b)

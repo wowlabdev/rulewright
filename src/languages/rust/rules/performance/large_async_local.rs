@@ -66,7 +66,7 @@ fn check_large_async_local(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let threshold = ctx
         .file
         .config
-        .get_u64("rust_large_async_local", &PARAMS[0]);
+        .get_u64("rust_large_async_local", &LARGE_ASYNC_LOCAL_PARAMS[0]);
     let locals = ctx
         .nodes::<ast::LetStmt>()
         .filter(|local| !ctx.is_in_test(local) && support::is_in_async_context(local))

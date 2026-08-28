@@ -72,6 +72,7 @@ fn check_type_def_ordering(ctx: &AstCtx<'_>) -> Vec<Violation> {
             ast::Item::Enum(item) => item
                 .name()
                 .map(|name| (name.text().to_string(), ctx.line_of(&name))),
+
             _ => None,
         })
         .collect();

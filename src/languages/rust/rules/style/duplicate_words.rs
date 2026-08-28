@@ -100,5 +100,5 @@ fn fix_duplicate_words(ctx: &FileCtx<'_>, v: &Violation) -> Option<Fix> {
 
 crate::rulewright_test!(check_duplicate_words, {
     crate::example_tests!(EXAMPLES, check_duplicate_words);
-    crate::fix_tests!(line, check_duplicate_words, fix_duplicate_words);
+    crate::fix_tests!(EXAMPLES, line, check_duplicate_words, fix_duplicate_words);
 });

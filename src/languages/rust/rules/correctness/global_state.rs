@@ -52,7 +52,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     global_state,
     "Flag `static` items with interior mutability and all `thread_local!` state.",
-    "Mutable globals are secretly duplicated across linked crate versions and break test isolation; perf-only caches need a #rw suppression with reason.",
+    "Mutable globals are duplicated across linked crate versions and break test isolation. Move state behind an owned context when behavior depends on it; a bounded process-wide cache may instead be suppressed with a reason describing its lifetime and synchronization.",
     Medium,
 );
 

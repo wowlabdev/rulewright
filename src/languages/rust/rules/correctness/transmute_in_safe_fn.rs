@@ -42,7 +42,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     transmute_in_safe_fn,
     "Flag `transmute` inside a safe `pub` fn.",
-    "A safe public signature promises soundness its transmuting body cannot guarantee — the prime unsoundness suspect.",
+    "A safe public signature must establish every invariant required by its transmute. Move the raw operation into a small private unsafe helper and validate the safe wrapper's inputs, or make the caller contract explicitly unsafe when validation is impossible.",
     High,
 );
 

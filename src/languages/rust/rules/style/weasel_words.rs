@@ -71,7 +71,7 @@ fn check_weasel_words(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let words = ctx
         .file
         .config
-        .get_str_array("rust_weasel_words", &PARAMS[0]);
+        .get_str_array("rust_weasel_words", &WEASEL_WORDS_PARAMS[0]);
 
     ctx.nodes::<ast::Item>()
         .filter(|item| !ctx.is_in_test(item))

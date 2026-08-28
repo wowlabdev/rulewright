@@ -33,7 +33,7 @@ const EXAMPLES: &[Example] = &[
 crate::workspace_rule!(
     param_clump,
     "Find maximal parameter groups repeated across functions; full-workspace runs are authoritative.",
-    "Parameters that repeatedly travel together usually represent one missing domain value object.",
+    "Parameters that repeatedly travel together may represent one missing domain value. Group them only when the new type has a coherent meaning and useful invariants; do not create a bag-of-fields struct merely to reduce the count.",
     Low,
     params {
         min_clump: i64 = 3,
@@ -47,10 +47,13 @@ struct Located<'a> {
     record: &'a FunctionRecord,
 }
 
-// #rw(fn: rust_clone_in_loop) inverted indexes own parameter signatures and member sets
 fn check_param_clump(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
-    let min_clump = ctx.config.get_usize("rust_param_clump", &PARAMS[0]);
-    let min_fns = ctx.config.get_usize("rust_param_clump", &PARAMS[1]);
+    let min_clump = ctx
+        .config
+        .get_usize("rust_param_clump", &PARAM_CLUMP_PARAMS[0]);
+    let min_fns = ctx
+        .config
+        .get_usize("rust_param_clump", &PARAM_CLUMP_PARAMS[1]);
     let functions: Vec<Located<'_>> = ctx
         .files
         .iter()

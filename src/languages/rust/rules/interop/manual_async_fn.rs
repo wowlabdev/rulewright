@@ -117,9 +117,11 @@ fn body_is_single_async_block(function: &ast::Fn) -> bool {
 
     match (stmts.as_slice(), statements.tail_expr()) {
         ([], Some(ast::Expr::BlockExpr(block))) => block.async_token().is_some(),
+
         ([ast::Stmt::ExprStmt(statement)], None) => {
             matches!(statement.expr(), Some(ast::Expr::BlockExpr(block)) if block.async_token().is_some())
         }
+
         _ => false,
     }
 }

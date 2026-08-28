@@ -124,6 +124,7 @@ struct Project {
 pub fn run_cli() -> ExitCode {
     let registry = match RuleRegistry::with_builtins() {
         Ok(registry) => registry,
+
         Err(error) => {
             output::error(&error.to_string());
 
@@ -168,7 +169,7 @@ fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
     }
 
     if let Some(config_path) = &args.parse_config {
-        return print_parsed_config(registry, config_path);
+        return print_parsed_config(registry, config_path, args.strict);
     }
 
     if let Some(rule_name) = &args.detail {
@@ -177,6 +178,7 @@ fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
 
     let initial_directory = match std::env::current_dir() {
         Ok(path) => path,
+
         Err(error) => {
             output::error(&format!("failed to resolve the current directory: {error}"));
 
@@ -185,6 +187,7 @@ fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
     };
     let project = match discover_project(args, &initial_directory) {
         Ok(project) => project,
+
         Err(error) => {
             output::error(&error);
 
@@ -206,6 +209,7 @@ fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
     };
     let member_roots = match resolve_filters(&project, &args.filter) {
         Ok(filters) => filters,
+
         Err(error) => {
             output::error(&error);
 
@@ -441,7 +445,9 @@ fn resolve_filters(project: &Project, selectors: &[String]) -> Result<Vec<String
                     "package filter `{selector}` did not match a workspace member"
                 ));
             }
+
             1 => selected.extend(matches),
+
             _ => {
                 return Err(format!(
                     "package filter `{selector}` is ambiguous across: {}",
@@ -462,9 +468,31 @@ fn workspace_packages(project: &Project) -> Vec<runner::PackageRoot> {
         .iter()
         .filter(|package| workspace_members.contains(&package.id))
         .filter_map(|package| {
+            let test_only = package
+                .metadata
+                .get("rulewright")
+                .and_then(|metadata| metadata.get("test-only"))
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let mut test_targets = package
+                .targets
+                .iter()
+                .filter(|target| target.is_test() || target.is_bench() || target.is_example())
+                .map(|target| PathBuf::from(target.src_path.as_std_path().to_path_buf()))
+                .collect::<Vec<_>>();
+
+            test_targets.sort();
+            test_targets.dedup();
+
             Some(runner::PackageRoot {
                 name: package.name.to_string(),
                 root: PathBuf::from(package.manifest_path.parent()?.as_std_path().to_path_buf()),
+                publishable: package
+                    .publish
+                    .as_ref()
+                    .is_none_or(|registries| !registries.is_empty()),
+                test_only,
+                test_targets,
             })
         })
         .collect::<Vec<_>>();
@@ -546,11 +574,13 @@ fn handle_init(registry: &RuleRegistry, config_path: &Path) -> ExitCode {
 
             ExitCode::SUCCESS
         }
+
         Err(error) if error.is_already_exists() => {
             output::error(&format!("{} already exists", config_path.display()));
 
             ExitCode::FAILURE
         }
+
         Err(error) => {
             output::error(&format!(
                 "failed to create {}: {error}",
@@ -606,15 +636,15 @@ struct RuleListRow {
     description: String,
 }
 
-fn print_parsed_config(registry: &RuleRegistry, config_path: &std::path::Path) -> ExitCode {
+fn print_parsed_config(
+    registry: &RuleRegistry,
+    config_path: &std::path::Path,
+    strict: bool,
+) -> ExitCode {
     let config_path = PathBuf::from(config_path.to_path_buf());
-    let config = match Config::load(&config_path) {
+    let config = match load_and_validate_config(registry, &config_path, strict) {
         Ok(config) => config,
-        Err(error) => {
-            output::error(&error.to_string());
-
-            return ExitCode::FAILURE;
-        }
+        Err(code) => return code,
     };
     let entries = config.resolved_rules(&registry.metadata());
 
@@ -624,6 +654,7 @@ fn print_parsed_config(registry: &RuleRegistry, config_path: &std::path::Path) -
 
             ExitCode::SUCCESS
         }
+
         Err(error) => {
             output::error(&format!("failed to serialize configuration: {error}"));
 
@@ -711,11 +742,13 @@ fn run_cargo_check_with_environment(
 
             true
         }
+
         Ok(_) => {
             output::error(&format!("cargo {name} failed"));
 
             false
         }
+
         Err(error) => {
             output::error(&format!("cargo {name}: {error}"));
 
@@ -742,6 +775,8 @@ fn is_cargo_package_context(name: &OsString) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use clap::CommandFactory as _;
 
     use super::*;
@@ -795,6 +830,7 @@ mod tests {
                     incompatible_analysis_options(&args).is_some(),
                     "actions should be rejected: {arguments:?}"
                 ),
+
                 Err(error) => assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict),
             }
         }
@@ -897,5 +933,52 @@ mod tests {
         );
         assert!(resolve_filters(&project, &["missing".to_owned()]).is_err());
         assert!(resolve_filters(&project, &[selected_arg.into_owned()]).is_err());
+    }
+
+    #[test]
+    fn workspace_packages_preserve_cargo_publishability() {
+        let temporary = crate::temporary::Directory::new().expect("temporary directory");
+        let root = temporary.path();
+
+        crate::file::write_text(
+            &root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"private\", \"public\", \"restricted\"]\nresolver = \"3\"\n",
+        )
+        .expect("workspace manifest");
+
+        for (member, publish) in [
+            ("private", "publish = false\n"),
+            ("public", ""),
+            ("restricted", "publish = [\"internal\"]\n"),
+        ] {
+            let member_root = root.join(member);
+
+            crate::directory::ensure(&member_root.join("src")).expect("member source directory");
+            crate::file::write_text(
+                &member_root.join("Cargo.toml"),
+                &format!(
+                    "[package]\nname = \"{member}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n{publish}"
+                ),
+            )
+            .expect("member manifest");
+            crate::file::write_text(&member_root.join("src/lib.rs"), "pub fn member() {}\n")
+                .expect("member source");
+        }
+
+        let project = discover_project_with_environment(
+            &args(&[]),
+            std::path::Path::new(root.as_os_str()),
+            None,
+        )
+        .expect("workspace should be discovered");
+        let packages = workspace_packages(&project);
+        let publishability = packages
+            .iter()
+            .map(|package| (package.name.as_str(), package.publishable))
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(publishability.get("private"), Some(&false));
+        assert_eq!(publishability.get("public"), Some(&true));
+        assert_eq!(publishability.get("restricted"), Some(&true));
     }
 }

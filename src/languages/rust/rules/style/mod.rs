@@ -19,7 +19,6 @@ mod magic_numbers;
 mod marked_region;
 mod match_layout;
 mod mod_order;
-mod module_prefix_in_name;
 mod naming;
 mod padding;
 mod pub_use_grouping;

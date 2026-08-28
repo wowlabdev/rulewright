@@ -84,5 +84,5 @@ fn fix_comment_space(ctx: &FileCtx<'_>, v: &Violation) -> Option<Fix> {
 
 crate::rulewright_test!(check_comment_space, {
     crate::example_tests!(EXAMPLES, check_comment_space);
-    crate::fix_tests!(line, check_comment_space, fix_comment_space);
+    crate::fix_tests!(EXAMPLES, line, check_comment_space, fix_comment_space);
 });

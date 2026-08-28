@@ -19,12 +19,32 @@ const EXAMPLES: &[Example] = &[
         code: "const A: &str = \"short\"; const B: &str = \"short\"; const C: &str = \"short\";",
         pass: true,
     },
+    Example {
+        label: "lint reasons are metadata, not shareable values",
+        code: "#[expect(dead_code, reason = \"a deliberately long repeated lint reason string\")] fn a() {}\n#[expect(dead_code, reason = \"a deliberately long repeated lint reason string\")] fn b() {}\n#[expect(dead_code, reason = \"a deliberately long repeated lint reason string\")] fn c() {}",
+        pass: true,
+    },
+    Example {
+        label: "lint reasons inside macro definitions remain metadata",
+        code: "macro_rules! a { () => { #[expect(dead_code, reason = \"a deliberately long repeated lint reason string\")] fn a() {} } }\nmacro_rules! b { () => { #[expect(dead_code, reason = \"a deliberately long repeated lint reason string\")] fn b() {} } }\nmacro_rules! c { () => { #[expect(dead_code, reason = \"a deliberately long repeated lint reason string\")] fn c() {} } }",
+        pass: true,
+    },
+    Example {
+        label: "strings in tests are fixtures",
+        code: "#[cfg(test)] mod tests { const A: &str = \"a deliberately long repeated fixture string value\"; const B: &str = \"a deliberately long repeated fixture string value\"; const C: &str = \"a deliberately long repeated fixture string value\"; }",
+        pass: true,
+    },
+    Example {
+        label: "strings in Rulewright test registration macros are fixtures",
+        code: "rulewright::rulewright_toml_test_at!(\"a deliberately long repeated fixture path value\", check, { let _ = \"a deliberately long repeated fixture path value\"; let _ = \"a deliberately long repeated fixture path value\"; });",
+        pass: true,
+    },
 ];
 
 crate::workspace_rule!(
     duplicate_strings,
-    "Find long string literals repeated across files; full-workspace runs are authoritative.",
-    "Repeated long literals should have one named source of truth or a shared fixture.",
+    "Find long string literals repeated throughout production source; full-workspace runs are authoritative.",
+    "Repeated long literals may represent one value that can drift. Extract a constant or shared fixture only when the occurrences have the same meaning; tune or suppress the rule when equal text is coincidental rather than inventing a false abstraction.",
     Low,
     params {
         min_chars: i64 = 40,
@@ -33,8 +53,12 @@ crate::workspace_rule!(
 );
 
 fn check_duplicate_strings(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
-    let min_chars = ctx.config.get_usize("rust_duplicate_strings", &PARAMS[0]);
-    let min_occurrences = ctx.config.get_usize("rust_duplicate_strings", &PARAMS[1]);
+    let min_chars = ctx
+        .config
+        .get_usize("rust_duplicate_strings", &DUPLICATE_STRINGS_PARAMS[0]);
+    let min_occurrences = ctx
+        .config
+        .get_usize("rust_duplicate_strings", &DUPLICATE_STRINGS_PARAMS[1]);
     let mut occurrences = HashMap::<&str, Vec<(&str, usize)>>::default();
 
     for file in ctx.files {
@@ -64,9 +88,16 @@ fn check_duplicate_strings(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
         let Some(&(first_rel, first_line)) = locations.first() else {
             continue;
         };
+        let occurrence_count = locations.len();
 
         for &(rel, line) in locations.iter().skip(1) {
-            violations.push(violation(rel, line, format!("duplicate long string; hoist to a shared const (first at {first_rel}:{first_line})")));
+            violations.push(violation(
+                rel,
+                line,
+                format!(
+                    "long string appears {occurrence_count} times (first at {first_rel}:{first_line}); extract one named source only when the occurrences represent the same value"
+                ),
+            ));
         }
     }
 

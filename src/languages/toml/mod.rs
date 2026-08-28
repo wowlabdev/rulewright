@@ -52,18 +52,23 @@ pub(crate) fn analyze(file: &FileCtx<'_>, rules: &[&Rule], fix_mode: bool) -> An
             continue;
         }
 
-        let violations: Vec<Violation> = check(&ctx)
+        let mut violations: Vec<Violation> = check(&ctx)
             .into_iter()
             .map(|violation| violation.with_rule(rule.info.name))
             .collect();
 
-        if fix_mode && let Some(RuleFix::Toml(fix)) = rule.fix {
-            analysis.fixes.extend(
-                violations
-                    .iter()
-                    .filter_map(|violation| fix(&ctx, violation))
-                    .map(|fix| (file.rel.to_owned(), fix)),
-            );
+        if let Some(RuleFix::Toml(fix)) = rule.fix {
+            for violation in &mut violations {
+                let Some(edit) = fix(&ctx, violation) else {
+                    continue;
+                };
+
+                violation.mark_fixable();
+
+                if fix_mode {
+                    analysis.fixes.push((file.rel.to_owned(), edit));
+                }
+            }
         }
 
         analysis.violations.extend(violations);
@@ -117,7 +122,6 @@ fn extract_dependencies(
     table: &toml::Table,
     out: &mut Vec<crate::languages::workspace::DependencyRecord>,
 ) {
-    // #rw(block: rust_clone_in_loop) dependency records own manifest keys beyond the parsed table
     for name in table.keys() {
         out.push(crate::languages::workspace::DependencyRecord {
             name: name.clone(),
@@ -137,7 +141,6 @@ fn dependency_line(lines: &[&str], section: &str, name: &str) -> usize {
             .strip_prefix('[')
             .and_then(|header| header.strip_suffix(']'))
         {
-            // #rw(rust_alloc_in_loop) target-section suffix is rendered only for manifest headers
             in_section = header == section || header.ends_with(&format!(".{section}"));
             continue;
         }

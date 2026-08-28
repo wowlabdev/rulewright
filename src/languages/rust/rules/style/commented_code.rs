@@ -47,7 +47,7 @@ const EXAMPLES: &[Example] = &[
 crate::line_rule!(
     commented_code,
     "Detect blocks of commented-out code (2+ consecutive lines).",
-    "Commented-out code is dead weight. Use version control to recover old code instead of leaving it inline.",
+    "Commented-out implementation code is dead weight. Restore it as executable code or delete it and rely on version control; rewrite illustrative pseudocode as prose or a proper documentation example instead of disguising it as a stale statement.",
 );
 
 const STARTS_WITH_PATTERNS: &[&str] = &[

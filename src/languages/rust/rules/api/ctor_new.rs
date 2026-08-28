@@ -27,6 +27,16 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
+        label: "Default with parameterized constructor",
+        code: "#[derive(Default)]\npub struct Pool { size: u32 }\nimpl Pool {\n    pub fn with_size(size: u32) -> Self { Pool { size } }\n}",
+        pass: true,
+    },
+    Example {
+        label: "Default with a semantic zero-argument constructor",
+        code: "#[derive(Default)]\npub struct Pool { size: u32 }\nimpl Pool {\n    pub fn empty() -> Self {\n        Pool { size: 0 }\n    }\n}",
+        pass: true,
+    },
+    Example {
         label: "no Default",
         code: "pub struct Pool { size: u32 }",
         pass: true,
@@ -50,13 +60,13 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     ctor_new,
-    "Flag public structs with `Default` but no `pub fn new` — constructors are static inherent methods (C-CTOR).",
-    "Users reach for X::new() first; a type offering only Default surprises them and breaks the upstream C-CTOR convention.",
+    "Flag public structs with `Default` but no public constructor (C-CTOR).",
+    "A public type with private fields should expose an obvious constructor; `new` is conventional, while a clearer semantic name such as `empty` or `with_capacity` is equally usable. Do not add a redundant zero-argument constructor when the type already has an intentional parameterized constructor.",
     Low,
 );
 
 fn check_ctor_new(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let (default_impls, pub_new) = collect_ctor_info(ctx);
+    let (default_impls, public_constructors) = collect_ctor_info(ctx);
 
     let public_structs = ctx
         .nodes::<ast::Struct>()
@@ -73,11 +83,11 @@ fn check_ctor_new(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .filter_map(|item| {
             let name = item.name()?;
 
-            (!pub_new.contains(name.text().as_str())).then(|| {
+            (!public_constructors.contains(name.text().as_str())).then(|| {
                 ctx.violation(
                     &name,
                     format!(
-                        "public struct `{name}` implements Default but has no `pub fn new` (C-CTOR)"
+                        "public struct `{name}` implements Default but has no public constructor (C-CTOR)"
                     ),
                 )
             })
@@ -87,7 +97,7 @@ fn check_ctor_new(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
 fn collect_ctor_info(ctx: &AstCtx<'_>) -> (HashSet<String>, HashSet<String>) {
     let mut default_impls = HashSet::default();
-    let mut pub_new = HashSet::default();
+    let mut public_constructors = HashSet::default();
 
     for item in ctx.nodes::<ast::Impl>() {
         let Some(ty) = item.self_ty().and_then(|ty| type_name(&ty)) else {
@@ -98,26 +108,38 @@ fn collect_ctor_info(ctx: &AstCtx<'_>) -> (HashSet<String>, HashSet<String>) {
             Some("Default") => {
                 default_impls.insert(ty);
             }
-            None if has_pub_new(&item) => {
-                pub_new.insert(ty);
+
+            None if has_public_constructor(&item, &ty) => {
+                public_constructors.insert(ty);
             }
+
             _ => {}
         }
     }
 
-    (default_impls, pub_new)
+    (default_impls, public_constructors)
 }
 
-fn has_pub_new(item: &ast::Impl) -> bool {
+fn has_public_constructor(item: &ast::Impl, ty: &str) -> bool {
     item.assoc_item_list().is_some_and(|list| {
         list.assoc_items().any(|assoc| match assoc {
-            ast::AssocItem::Fn(function) => {
-                function.name().is_some_and(|name| name.text() == "new")
-                    && is_pub(function.visibility())
-            }
+            ast::AssocItem::Fn(function) => is_constructor(&function, ty),
             _ => false,
         })
     })
+}
+
+fn is_constructor(function: &ast::Fn, ty: &str) -> bool {
+    let associated = function
+        .param_list()
+        .is_some_and(|params| params.self_param().is_none());
+    let returns_self = function
+        .ret_type()
+        .and_then(|return_type| return_type.ty())
+        .and_then(|return_type| type_name(&return_type))
+        .is_some_and(|return_type| matches!(return_type.as_str(), "Self") || return_type == ty);
+
+    is_pub(function.visibility()) && associated && returns_self
 }
 
 fn has_private_field(item: &ast::Struct) -> bool {
@@ -125,6 +147,7 @@ fn has_private_field(item: &ast::Struct) -> bool {
         ast::FieldList::RecordFieldList(list) => {
             list.fields().any(|field| !is_pub(field.visibility()))
         }
+
         ast::FieldList::TupleFieldList(list) => {
             list.fields().any(|field| !is_pub(field.visibility()))
         }

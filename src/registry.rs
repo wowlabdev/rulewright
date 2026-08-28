@@ -68,7 +68,6 @@ impl std::fmt::Display for RuleKind {
 
 /// Unified metadata for a registered rule (line or AST).
 #[derive(Debug)]
-// #rw(rust_similar_structs) public registry metadata is distinct from the contextual LLM report projection
 pub struct RuleMeta {
     pub name: &'static str,
     pub description: &'static str,
@@ -260,7 +259,7 @@ pub enum RegistryError {
 }
 
 /// A code example that demonstrates a rule — used in `--detail` output and tests.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Example {
     pub label: &'static str,
     pub code: &'static str,
@@ -284,14 +283,14 @@ impl ParamType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 // #rw(rust_non_exhaustive_on_public) internal enum, all variants matched within this crate
 pub enum ParamDefault {
     Int(i64),
     StringArray(&'static [&'static str]),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct RuleParam {
     pub name: &'static str,
     pub param_type: ParamType,
@@ -325,8 +324,7 @@ impl std::fmt::Display for Severity {
 }
 
 /// Shared metadata fields common to both line and AST rules.
-#[derive(Debug)]
-// #rw(rust_similar_structs) static registration fields omit the derived rule kind and fixability metadata
+#[derive(Clone, Copy, Debug)]
 pub struct RuleInfo {
     pub name: &'static str,
     pub description: &'static str,
@@ -367,7 +365,7 @@ impl RuleInfo {
         self
     }
 
-    fn to_meta(&self, kind: RuleKind, fixable: bool) -> RuleMeta {
+    fn to_meta(self, kind: RuleKind, fixable: bool) -> RuleMeta {
         RuleMeta {
             name: self.name,
             description: self.description,
@@ -441,8 +439,18 @@ fn validate_rule(pack: &'static str, rule: &Rule) -> Result<(), RegistryError> {
             (ParamType::Int, ParamDefault::Int(value)) if *value < 0 => {
                 return Err(invalid("integer parameter defaults must be non-negative"));
             }
+
             (ParamType::Int, ParamDefault::Int(_)) => {}
+
             (ParamType::StringArray, ParamDefault::StringArray(defaults)) => {
+                let mut unique_defaults = HashSet::new();
+
+                if defaults.iter().any(|value| !unique_defaults.insert(*value)) {
+                    return Err(invalid(
+                        "string-array parameter defaults must not contain duplicates",
+                    ));
+                }
+
                 if !parameter.allowed_values.is_empty()
                     && defaults
                         .iter()
@@ -451,6 +459,7 @@ fn validate_rule(pack: &'static str, rule: &Rule) -> Result<(), RegistryError> {
                     return Err(invalid("string-array defaults must use allowed values"));
                 }
             }
+
             _ => return Err(invalid("parameter type does not match its default value")),
         }
     }
@@ -524,7 +533,7 @@ pub enum RuleFix {
 }
 
 /// One lint rule in the language-neutral registry.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Rule {
     pub info: RuleInfo,
     pub check: RuleCheck,
@@ -699,6 +708,12 @@ mod tests {
         default: ParamDefault::Int(1),
         allowed_values: &[],
     }];
+    const DUPLICATE_ARRAY_DEFAULT_PARAMS: &[RuleParam] = &[RuleParam {
+        name: "names",
+        param_type: ParamType::StringArray,
+        default: ParamDefault::StringArray(&["duplicate", "duplicate"]),
+        allowed_values: &[],
+    }];
     const EMPTY_EXAMPLES: &[Example] = &[Example {
         label: "",
         code: "fn fixture() {}",
@@ -822,6 +837,19 @@ mod tests {
         None,
     )];
 
+    static DUPLICATE_ARRAY_DEFAULT_RULES: &[Rule] = &[Rule::rust_line(
+        RuleInfo::new(
+            "fixture_duplicate_array_default",
+            "Duplicate array default fixture.",
+            "Generated configuration must not contain invalid duplicate values.",
+            Severity::Low,
+            &[],
+            DUPLICATE_ARRAY_DEFAULT_PARAMS,
+        ),
+        no_violations,
+        None,
+    )];
+
     static EMPTY_EXAMPLE_RULES: &[Rule] = &[Rule::rust_line(
         RuleInfo::new(
             "fixture_empty_example",
@@ -919,15 +947,16 @@ mod tests {
         #[rustfmt::skip]
         let cases = [
             // #rw:aligned
-            (INVALID_ID_RULES,             "ID must start"),
-            (EMPTY_METADATA_RULES,         "must not be empty"),
-            (DUPLICATE_PARAM_RULES,        "parameter names must be unique"),
-            (INVALID_PARAM_NAME_RULES,     "parameter names must be valid lowercase identifiers"),
-            (NEGATIVE_DEFAULT_RULES,       "integer parameter defaults must be non-negative"),
-            (INT_WITH_ARRAY_DEFAULT_RULES, "parameter type does not match"),
-            (ARRAY_WITH_INT_DEFAULT_RULES, "parameter type does not match"),
-            (EMPTY_EXAMPLE_RULES,          "example labels and source"),
-            (INCOMPATIBLE_FIX_RULES,       "fix kind does not match"),
+            (INVALID_ID_RULES,              "ID must start"),
+            (EMPTY_METADATA_RULES,          "must not be empty"),
+            (DUPLICATE_PARAM_RULES,         "parameter names must be unique"),
+            (INVALID_PARAM_NAME_RULES,      "parameter names must be valid lowercase identifiers"),
+            (NEGATIVE_DEFAULT_RULES,        "integer parameter defaults must be non-negative"),
+            (INT_WITH_ARRAY_DEFAULT_RULES,  "parameter type does not match"),
+            (ARRAY_WITH_INT_DEFAULT_RULES,  "parameter type does not match"),
+            (DUPLICATE_ARRAY_DEFAULT_RULES, "string-array parameter defaults must not contain duplicates"),
+            (EMPTY_EXAMPLE_RULES,           "example labels and source"),
+            (INCOMPATIBLE_FIX_RULES,        "fix kind does not match"),
         ];
 
         for (rules, expected) in cases {

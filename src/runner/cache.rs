@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-const CACHE_SCHEMA: u32 = 2;
+const CACHE_SCHEMA: u32 = 3;
 const BASE_DOMAIN: &[u8] = b"rulewright:analysis-base:v1";
 const RUST_CONTEXT_DOMAIN: &[u8] = b"rulewright:rust-context:v1";
 const TOML_CONTEXT_DOMAIN: &[u8] = b"rulewright:toml-context:v1";
@@ -332,6 +332,7 @@ struct CachedViolation {
     column: Option<usize>,
     message: String,
     rule: Option<String>,
+    fixable: bool,
 }
 
 impl CachedViolation {
@@ -342,6 +343,7 @@ impl CachedViolation {
             column: violation.column,
             message: violation.message.clone(),
             rule: violation.rule.map(str::to_owned),
+            fixable: violation.fixable,
         }
     }
 
@@ -359,6 +361,7 @@ impl CachedViolation {
             column: self.column,
             message: self.message.clone(),
             rule,
+            fixable: self.fixable,
         })
     }
 }
@@ -379,6 +382,43 @@ fn base_checksum(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Checksum> 
         append_part(&mut encoded, pack.implementation_fingerprint.as_bytes())?;
     }
 
+    let mut packages = ctx.packages.iter().collect::<Vec<_>>();
+
+    packages.sort_unstable_by(|left, right| {
+        left.root
+            .cmp(&right.root)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    append_part(
+        &mut encoded,
+        &u64::try_from(packages.len()).ok()?.to_le_bytes(),
+    )?;
+
+    for package in packages {
+        append_part(&mut encoded, package.name.as_bytes())?;
+        append_part(&mut encoded, package.root.to_str()?.as_bytes())?;
+        append_part(
+            &mut encoded,
+            &[u8::from(package.publishable), u8::from(package.test_only)],
+        )?;
+
+        let mut test_targets = package
+            .test_targets
+            .iter()
+            .map(|path| path.to_str())
+            .collect::<Option<Vec<_>>>()?;
+
+        test_targets.sort_unstable();
+        append_part(
+            &mut encoded,
+            &u64::try_from(test_targets.len()).ok()?.to_le_bytes(),
+        )?;
+
+        for target in test_targets {
+            append_part(&mut encoded, target.as_bytes())?;
+        }
+    }
+
     for rule in rules {
         append_part(&mut encoded, rule.info.name.as_bytes())?;
         append_part(&mut encoded, rule.info.description.as_bytes())?;
@@ -395,6 +435,7 @@ fn base_checksum(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Checksum> 
                 crate::ParamDefault::Int(value) => {
                     append_part(&mut encoded, &value.to_le_bytes())?;
                 }
+
                 crate::ParamDefault::StringArray(values) => {
                     for value in *values {
                         append_part(&mut encoded, value.as_bytes())?;
@@ -417,6 +458,7 @@ fn workspace_rule_checksum(name: &str, ctx: &WorkspaceCtx<'_>) -> Option<Checksu
             bincode::config::standard(),
         )
         .ok()?,
+
         "rust_param_clump" => bincode::serde::encode_to_vec(
             ctx.files
                 .iter()
@@ -441,6 +483,7 @@ fn workspace_rule_checksum(name: &str, ctx: &WorkspaceCtx<'_>) -> Option<Checksu
             bincode::config::standard(),
         )
         .ok()?,
+
         "rust_similar_fns" => bincode::serde::encode_to_vec(
             ctx.files
                 .iter()
@@ -466,14 +509,7 @@ fn workspace_rule_checksum(name: &str, ctx: &WorkspaceCtx<'_>) -> Option<Checksu
             bincode::config::standard(),
         )
         .ok()?,
-        "rust_similar_structs" => bincode::serde::encode_to_vec(
-            ctx.files
-                .iter()
-                .map(|file| (&file.rel, &file.structs, &file.suppressions))
-                .collect::<Vec<_>>(),
-            bincode::config::standard(),
-        )
-        .ok()?,
+
         "toml_cargo_unused_deps" => bincode::serde::encode_to_vec(
             (
                 ctx.files
@@ -485,6 +521,7 @@ fn workspace_rule_checksum(name: &str, ctx: &WorkspaceCtx<'_>) -> Option<Checksu
             bincode::config::standard(),
         )
         .ok()?,
+
         _ => return None,
     };
     let mut encoded = Vec::new();

@@ -1,6 +1,8 @@
 #[cfg(test)]
 use googletest::prelude::*;
 
+use std::cmp::Ordering;
+
 use crate::{Example, FileCtx, Fix, Violation, infra::parse, violation};
 
 const ASC_MARKER: &str = "// #rw:sorted(asc)";
@@ -64,6 +66,57 @@ fn sort_key(line: &str) -> String {
     input.to_lowercase()
 }
 
+fn compare_lines(left: &str, right: &str, direction: Direction) -> Ordering {
+    match (is_catch_all_match_arm(left), is_catch_all_match_arm(right)) {
+        (true, false) => Ordering::Greater,
+
+        (false, true) => Ordering::Less,
+
+        _ => match direction {
+            Direction::Ascending => sort_key(left).cmp(&sort_key(right)),
+            Direction::Descending => sort_key(right).cmp(&sort_key(left)),
+        },
+    }
+}
+
+fn is_catch_all_match_arm(line: &str) -> bool {
+    let Some((pattern, _)) = line.trim().split_once("=>") else {
+        return false;
+    };
+    let pattern = pattern.trim();
+
+    if pattern.contains(" if ") {
+        return false;
+    }
+
+    if pattern == "_" {
+        return true;
+    }
+
+    let binding = pattern
+        .strip_prefix("ref ")
+        .or_else(|| pattern.strip_prefix("mut "))
+        .unwrap_or(pattern);
+    let (name, subpattern) = binding
+        .split_once('@')
+        .map_or((binding, None), |(name, subpattern)| {
+            (name.trim(), Some(subpattern.trim()))
+        });
+
+    subpattern.is_none_or(|subpattern| subpattern == "_") && is_binding_name(name)
+}
+
+fn is_binding_name(name: &str) -> bool {
+    let name = name.strip_prefix("r#").unwrap_or(name);
+    let mut characters = name.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+
+    (first == '_' || first.is_ascii_lowercase())
+        && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
+}
+
 fn check_sorted(ctx: &FileCtx<'_>) -> Vec<Violation> {
     let comment_starts = crate::infra::scanner::line_comment_starts(ctx.contents);
     let mut violations = Vec::new();
@@ -79,11 +132,9 @@ fn check_sorted(ctx: &FileCtx<'_>) -> Vec<Violation> {
                 continue;
             }
 
-            let key = sort_key(trimmed);
-            let ordered = previous.as_ref().is_none_or(|previous| match direction {
-                Direction::Ascending => previous <= &key,
-                Direction::Descending => previous >= &key,
-            });
+            let ordered = previous
+                .as_ref()
+                .is_none_or(|previous| compare_lines(previous, trimmed, direction).is_le());
 
             if !ordered {
                 violations.push(violation(
@@ -99,7 +150,7 @@ fn check_sorted(ctx: &FileCtx<'_>) -> Vec<Violation> {
                 break;
             }
 
-            previous = Some(key);
+            previous = Some(trimmed.to_owned());
         }
     }
 
@@ -180,11 +231,7 @@ fn sorted_region<'a>(lines: &[&'a str], direction: Direction) -> Option<Vec<&'a 
         return None;
     }
 
-    sorted.sort_by_key(|line| sort_key(line));
-
-    if matches!(direction, Direction::Descending) {
-        sorted.reverse();
-    }
+    sorted.sort_by(|left, right| compare_lines(left, right, direction));
 
     let mut sorted = sorted.into_iter();
 
@@ -202,7 +249,7 @@ fn sorted_region<'a>(lines: &[&'a str], direction: Direction) -> Option<Vec<&'a 
 
 crate::rulewright_test!(check_sorted, {
     crate::example_tests!(EXAMPLES, check_sorted);
-    crate::fix_tests!(line, check_sorted, fix_sorted);
+    crate::fix_tests!(EXAMPLES, line, check_sorted, fix_sorted);
 
     #[gtest]
     fn comments_keep_their_slots() -> Result<()> {
@@ -255,6 +302,51 @@ use alpha;
         verify_eq!(
             fixed,
             "// #rw:sorted(asc)\nuse alpha;\nuse beta;\nuse charlie;\nuse delta;"
+        )
+    }
+
+    #[gtest]
+    fn ascending_match_region_keeps_wildcard_last() -> Result<()> {
+        let source = "// #rw:sorted(asc)\nZulu => zulu(),\n_ => fallback(),\nAlpha => alpha(),";
+        let expected = "// #rw:sorted(asc)\nAlpha => alpha(),\nZulu => zulu(),\n_ => fallback(),";
+
+        verify_eq!(
+            crate::apply_line_fixes(source, check_sorted, fix_sorted),
+            expected
+        )
+    }
+
+    #[gtest]
+    fn descending_match_region_keeps_wildcard_last() -> Result<()> {
+        let source = "// #rw:sorted(desc)\nAlpha => alpha(),\n_ => fallback(),\nZulu => zulu(),";
+        let expected = "// #rw:sorted(desc)\nZulu => zulu(),\nAlpha => alpha(),\n_ => fallback(),";
+
+        verify_eq!(
+            crate::apply_line_fixes(source, check_sorted, fix_sorted),
+            expected
+        )
+    }
+
+    #[gtest]
+    fn sorted_match_region_with_wildcard_last_passes() -> Result<()> {
+        let ascending = "// #rw:sorted(asc)\nAlpha => alpha(),\nZulu => zulu(),\n_ => fallback(),";
+        let descending =
+            "// #rw:sorted(desc)\nZulu => zulu(),\nAlpha => alpha(),\n_ => fallback(),";
+
+        verify_true!(run(ascending).is_empty())?;
+        verify_true!(run(descending).is_empty())
+    }
+
+    #[gtest]
+    fn binding_catch_all_stays_after_concrete_match_arms() -> Result<()> {
+        let source =
+            "// #rw:sorted(desc)\nAlpha => alpha(),\nvalue => fallback(value),\nZulu => zulu(),";
+        let expected =
+            "// #rw:sorted(desc)\nZulu => zulu(),\nAlpha => alpha(),\nvalue => fallback(value),";
+
+        verify_eq!(
+            crate::apply_line_fixes(source, check_sorted, fix_sorted),
+            expected
         )
     }
 

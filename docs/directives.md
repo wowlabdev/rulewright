@@ -28,6 +28,8 @@ Unknown rules, empty targets, malformed scopes, and missing reasons are findings
 
 `rulewright --suppressions` reports active suppressions. `rulewright clean --dry-run` previews stale targets; `rulewright clean` atomically removes or rewrites only targets that no longer cover a finding.
 
+Set `allow_suppressions = false` at the top of `rulewright.toml` when a repository wants every exception expressed through shared rule configuration. Rulewright then reports each `#rw(...)` directive and still runs the rules it tried to suppress. The `#rw:aligned` and `#rw:sorted(...)` markers remain available because they enable layout checks rather than suppressing findings.
+
 ## Alignment marker
 
 `// #rw:aligned` is not a suppression. It opts the immediately following table-like block into the `rust_aligned` rule:

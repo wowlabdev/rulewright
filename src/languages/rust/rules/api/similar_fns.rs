@@ -34,7 +34,7 @@ const EXAMPLES: &[Example] = &[
 crate::workspace_rule!(
     similar_fns,
     "Find exact and near duplicate function bodies; full-workspace runs are authoritative.",
-    "Clone detection identifies behavior that should usually be shared behind one implementation.",
+    "Substantially identical functions may have drifted copies of one behavior. Share the implementation only when both functions must evolve together; keep coincidental similarity separate and suppress it with that reason.",
     Low,
     params {
         min_tokens: i64 = 40,
@@ -49,8 +49,12 @@ struct Located<'a> {
 }
 
 fn check_similar_fns(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
-    let min_tokens = ctx.config.get_usize("rust_similar_fns", &PARAMS[0]);
-    let jaccard_percent = ctx.config.get_usize("rust_similar_fns", &PARAMS[1]);
+    let min_tokens = ctx
+        .config
+        .get_usize("rust_similar_fns", &SIMILAR_FNS_PARAMS[0]);
+    let jaccard_percent = ctx
+        .config
+        .get_usize("rust_similar_fns", &SIMILAR_FNS_PARAMS[1]);
     let records: Vec<Located<'_>> = ctx
         .files
         .iter()

@@ -21,8 +21,13 @@ const EXAMPLES: &[Example] = &[
     },
     Example {
         label: "public new on builder",
-        code: "pub struct ConnBuilder;\nimpl ConnBuilder {\n    pub fn new() -> Self {\n        ConnBuilder\n    }\n    pub fn build(self) -> u32 {\n        0\n    }\n}",
+        code: "pub struct Conn;\npub struct ConnBuilder;\nimpl ConnBuilder {\n    pub fn new() -> Self {\n        ConnBuilder\n    }\n    pub fn build(self) -> Conn {\n        Conn\n    }\n}",
         pass: false,
+    },
+    Example {
+        label: "builder is the public entry point and converts into a draft",
+        code: "pub struct PlanBuilder; pub struct Draft; impl PlanBuilder { pub fn new() -> Self { Self } pub fn into_draft(self) -> Result<Draft, Error> { Ok(Draft) } }",
+        pass: true,
     },
     Example {
         label: "set_ prefixed setter",
@@ -38,6 +43,11 @@ const EXAMPLES: &[Example] = &[
         label: "borrowing setter",
         code: "pub struct ConnBuilder { port: u16 }\nimpl ConnBuilder {\n    pub fn port(&mut self, port: u16) -> &mut Self {\n        self.port = port;\n        self\n    }\n    pub fn build(self) -> u16 {\n        self.port\n    }\n}",
         pass: false,
+    },
+    Example {
+        label: "imperative builder mutation",
+        code: "pub struct ConnBuilder { port: u16 }\nimpl ConnBuilder {\n    pub fn set_port(&mut self, port: u16) { self.port = port; }\n    pub fn build(self) -> u16 { self.port }\n}",
+        pass: true,
     },
     Example {
         label: "buildable type without builder shortcut",
@@ -63,8 +73,8 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     builder_conventions,
-    "Enforce builder conventions: chainable by-value setters named `x()`, a final `build()`, and `X::builder()` instead of `XBuilder::new()`.",
-    "Builders that deviate from the canonical pattern break fluent construction and surprise users who expect X::builder()...build().",
+    "Enforce builder conventions: chainable by-value setters named `x()`, a terminal build/finish/into_* method, and `X::builder()` when a separate `X` product type exists.",
+    "Consistent fluent setters and an explicit terminal transition make construction easy to follow. A standalone builder may expose new(); the X::builder() shortcut is expected only when X is a same-module product type.",
     Medium,
 );
 
@@ -77,7 +87,6 @@ fn check_builder_conventions(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .collect()
 }
 
-// #rw(fn: rust_alloc_in_loop) declaration names become owned lookup keys for the second analysis pass.
 fn collect_items(ctx: &AstCtx<'_>) -> (HashSet<String>, HashMap<String, Vec<ast::Fn>>) {
     let mut structs = HashSet::default();
     let mut methods: HashMap<String, Vec<ast::Fn>> = HashMap::default();
@@ -89,6 +98,7 @@ fn collect_items(ctx: &AstCtx<'_>) -> (HashSet<String>, HashMap<String, Vec<ast:
                     structs.insert(name.text().to_string());
                 }
             }
+
             ast::Item::Impl(item) if item.trait_().is_none() => {
                 let Some(name) = item.self_ty().and_then(|ty| type_name(&ty)) else {
                     continue;
@@ -104,6 +114,7 @@ fn collect_items(ctx: &AstCtx<'_>) -> (HashSet<String>, HashMap<String, Vec<ast:
                         }),
                 );
             }
+
             _ => {}
         }
     }
@@ -154,6 +165,13 @@ fn is_builder_ctor_name(function: &ast::Fn) -> bool {
     name == "builder" || name.starts_with("builder_")
 }
 
+fn is_terminal_name(function: &ast::Fn) -> bool {
+    function.name().is_some_and(|name| {
+        matches!(name.text().as_str(), "build" | "try_build" | "finish")
+            || name.text().starts_with("into_")
+    })
+}
+
 fn check_builder(
     ctx: &AstCtx<'_>,
     item: &ast::Struct,
@@ -172,13 +190,10 @@ fn check_builder(
     };
     let mut out = Vec::new();
 
-    if !own
-        .iter()
-        .any(|function| function.name().is_some_and(|name| name.text() == "build"))
-    {
+    if !own.iter().any(is_terminal_name) {
         out.push(ctx.violation(
             &name_node,
-            format!("builder `{name}` has no `build()` method"),
+            format!("builder `{name}` has no terminal `build()`/`finish()`/`into_*()` method"),
         ));
     }
 
@@ -188,14 +203,16 @@ fn check_builder(
         };
         let fn_name = fn_node.text();
 
-        if fn_name == "new" && is_pub(function.visibility()) {
+        if fn_name == "new" && is_pub(function.visibility()) && pub_structs.contains(base) {
             out.push(ctx.violation(
                 &fn_node,
                 format!("`{name}::new` should not be public — provide `{base}::builder()` instead"),
             ));
         }
 
-        if fn_name.starts_with("set_") || fn_name.starts_with("with_") {
+        if (fn_name.starts_with("set_") || fn_name.starts_with("with_"))
+            && is_chainable_setter(function, &name)
+        {
             out.push(ctx.violation(&fn_node, format!("builder setter `{name}::{fn_name}` — setters are bare `x()`, not `set_x()`/`with_x()`")));
         }
 

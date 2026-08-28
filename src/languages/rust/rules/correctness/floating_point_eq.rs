@@ -41,27 +41,37 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "compare float to literal zero",
         code: "fn f(a: f64) -> bool { a == 0.0 }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "local float binding equality",
         code: "fn f() -> bool { let x: f64 = 1.0; x == 0.0 }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "local float literal equality",
         code: "fn f() -> bool { let x = 1.0; x == 0.0 }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "left-hand-side float literal",
         code: "fn f(a: f64) -> bool { 0.0 == a }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "cast-to-float comparison",
         code: "fn f(b: i32) -> bool { b as f64 == 0 }",
         pass: false,
+    },
+    Example {
+        label: "compare float to nonzero literal",
+        code: "fn f(a: f64) -> bool { a == 1.5 }",
+        pass: false,
+    },
+    Example {
+        label: "compare float to negative zero",
+        code: "fn f(a: f64) -> bool { a != -0.0 }",
+        pass: true,
     },
     Example {
         label: "float equality in impl method",
@@ -77,8 +87,8 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     floating_point_eq,
-    "Flag direct `==`/`!=` comparison on `f32`/`f64` values.",
-    "Floating-point equality is unreliable due to rounding. Use an epsilon comparison or relative tolerance instead.",
+    "Flag direct nonzero `==`/`!=` comparison on `f32`/`f64` values for review.",
+    "Computed floating-point values usually need absolute or relative tolerance. Exact zero is a useful structural and sentinel check; keep other exact equality only when the domain invariant genuinely requires it.",
     High,
 );
 
@@ -94,16 +104,47 @@ fn check_floating_point_eq(ctx: &AstCtx<'_>) -> Vec<Violation> {
             let (left, right) = expr.sub_exprs();
             let (left, right) = (left?, right?);
 
+            if expr_is_zero_float_literal(&left) || expr_is_zero_float_literal(&right) {
+                return None;
+            }
+
             (expr_uses_float_name(&left, &float_names)
                 || expr_uses_float_name(&right, &float_names))
             .then(|| {
                 ctx.violation(
                     &expr,
-                    "direct float equality comparison — use epsilon-based comparison instead",
+                    "direct float equality comparison — use an absolute or relative tolerance, or document why this domain requires exact equality",
                 )
             })
         })
         .collect()
+}
+
+fn expr_is_zero_float_literal(expr: &ast::Expr) -> bool {
+    match expr {
+        ast::Expr::Literal(literal) => literal_is_zero_float(literal),
+
+        ast::Expr::PrefixExpr(prefix) => prefix.expr().is_some_and(|expr| {
+            let ast::Expr::Literal(literal) = expr else {
+                return false;
+            };
+
+            literal_is_zero_float(&literal)
+        }),
+
+        _ => false,
+    }
+}
+
+fn literal_is_zero_float(literal: &ast::Literal) -> bool {
+    let LiteralKind::FloatNumber(number) = literal.kind() else {
+        return false;
+    };
+    let Ok(value) = number.value_string().parse::<f64>() else {
+        return false;
+    };
+
+    value.to_bits() << 1 == 0
 }
 
 fn expr_is_float(expr: &ast::Expr) -> bool {
@@ -124,11 +165,11 @@ fn expr_uses_float_name(expr: &ast::Expr, float_names: &HashSet<String>) -> bool
 
             name.is_some_and(|name| float_names.contains(name.text().as_str()))
         }
+
         _ => expr_is_float(expr),
     }
 }
 
-// #rw(fn: rust_alloc_in_loop) float binding names must be owned beyond each syntax-node iteration
 fn float_names_before(function: &ast::Fn, expr: &ast::BinExpr) -> HashSet<String> {
     let mut names = HashSet::default();
 

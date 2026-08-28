@@ -39,7 +39,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     catch_unwind,
     "Require `// PANIC-BOUNDARY:` comment on `catch_unwind` calls.",
-    "Catching a panic and continuing risks observing broken state. The comment must state the controlled-restart story.",
+    "Catching a panic and continuing may expose poisoned or partially mutated state. Prefer an ordinary Result boundary; when isolating plugins, callbacks, or worker tasks, document what state is discarded and where execution restarts safely.",
     High,
 );
 

@@ -26,9 +26,14 @@ const EXAMPLES: &[Example] = &[
         pass: false,
     },
     Example {
-        label: "push nested deeper in loop body",
+        label: "conditionally sparse output does not imply source-sized capacity",
         code: "fn f(xs: &[u32]) { let mut out = Vec::new(); for x in xs.iter() { if *x > 0 { out.push(*x); } } }",
-        pass: false,
+        pass: true,
+    },
+    Example {
+        label: "match-selected output does not imply source-sized capacity",
+        code: "fn f(xs: &[Option<u32>]) { let mut out = Vec::new(); for x in xs.iter() { if let Some(x) = x { out.push(*x); } } }",
+        pass: true,
     },
     Example {
         label: "with_capacity already used",
@@ -59,8 +64,8 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     missing_capacity,
-    "Flag collections built with `new()`/`default()` then grown inside a loop over a sized source.",
-    "When the final size is knowable at construction, with_capacity or collect avoids repeated reallocation and copying.",
+    "Flag collections built with `new()`/`default()` then unconditionally grown inside a loop over a sized source.",
+    "When every source item grows the collection, the final size is knowable and with_capacity or collect avoids repeated reallocation. Conditional output may be sparse and is deliberately excluded.",
 );
 
 fn check_missing_capacity(ctx: &AstCtx<'_>) -> Vec<Violation> {
@@ -74,7 +79,6 @@ fn check_missing_capacity(ctx: &AstCtx<'_>) -> Vec<Violation> {
         let entries: Vec<ra_ap_syntax::SyntaxNode> = block.syntax().children().collect();
 
         for (index, entry) in entries.iter().enumerate() {
-            // #rw(rust_clone_in_loop) SyntaxNode clone is reference-counted and O(1)
             let Some(local) = ast::LetStmt::cast(entry.clone()) else {
                 continue;
             };
@@ -158,9 +162,7 @@ fn grown_in_sized_loop<'a>(
     name: &str,
 ) -> bool {
     for entry in rest {
-        // #rw(rust_clone_in_loop) SyntaxNode clone is reference-counted and O(1)
         let loop_expr = ast::ForExpr::cast(entry.clone()).or_else(|| {
-            // #rw(rust_clone_in_loop) SyntaxNode clone is reference-counted and O(1)
             ast::ExprStmt::cast(entry.clone()).and_then(|statement| match statement.expr()? {
                 ast::Expr::ForExpr(loop_expr) => Some(loop_expr),
                 _ => None,
@@ -182,9 +184,30 @@ fn grown_in_sized_loop<'a>(
             .syntax()
             .descendants()
             .filter_map(ast::MethodCallExpr::cast)
-            .any(|call| grows_collection(&call, name))
+            .any(|call| grows_collection(&call, name) && is_unconditional_growth(&call, &body))
         {
             return true;
+        }
+    }
+
+    false
+}
+
+fn is_unconditional_growth(call: &ast::MethodCallExpr, loop_body: &ast::BlockExpr) -> bool {
+    for ancestor in call.syntax().ancestors().skip(1) {
+        if &ancestor == loop_body.syntax() {
+            return true;
+        }
+
+        if ast::IfExpr::can_cast(ancestor.kind())
+            || ast::MatchExpr::can_cast(ancestor.kind())
+            || ast::MatchArm::can_cast(ancestor.kind())
+            || ast::ClosureExpr::can_cast(ancestor.kind())
+            || ast::ForExpr::can_cast(ancestor.kind())
+            || ast::WhileExpr::can_cast(ancestor.kind())
+            || ast::LoopExpr::can_cast(ancestor.kind())
+        {
+            return false;
         }
     }
 

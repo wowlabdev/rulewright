@@ -5,6 +5,8 @@ use ra_ap_syntax::{
 
 use crate::{AstCtx, Example, Violation};
 
+use super::super::support::compact_syntax;
+
 #[rustfmt::skip]
 const EXAMPLES: &[Example] = &[
     Example {
@@ -59,25 +61,13 @@ fn check_dup_expressions(ctx: &AstCtx<'_>) -> Vec<Violation> {
             let (left, right) = expr.sub_exprs();
             let (left, right) = (left?, right?);
 
-            (tokens_to_string(&left) == tokens_to_string(&right)).then(|| {
+            (compact_syntax(left.syntax()) == compact_syntax(right.syntax())).then(|| {
                 let message = format!("identical sub-expressions on both sides of `{op}`");
 
                 ctx.violation(&expr, message)
             })
         })
         .collect()
-}
-
-fn tokens_to_string(expr: &ast::Expr) -> String {
-    expr.syntax()
-        .descendants_with_tokens()
-        .filter_map(ra_ap_syntax::NodeOrToken::into_token)
-        .filter(|token| !token.kind().is_trivia())
-        .fold(String::new(), |mut source, token| {
-            source.push_str(token.text());
-
-            source
-        })
 }
 
 fn is_suspicious_op(op: BinaryOp) -> bool {

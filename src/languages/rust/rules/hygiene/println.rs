@@ -44,7 +44,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     println,
     "Ban `println!`/`eprintln!`/`print!`/`eprint!` outside test code.",
-    "Console printing bypasses structured logging. Use tracing or the output module for consistent, filterable output.",
+    "Console printing bypasses structured logging in libraries and services. Use tracing or an explicit output abstraction there; scope CLI output, examples, and benchmarks out of this policy instead of deleting observable behavior.",
     Medium,
 );
 

@@ -24,7 +24,7 @@ crate::language_workspace_rule!(
 fn check_toml_cargo_unused_deps(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
     let always_used: HashSet<String> = ctx
         .config
-        .get_str_array("toml_cargo_unused_deps", &PARAMS[0])
+        .get_str_array("toml_cargo_unused_deps", &TOML_CARGO_UNUSED_DEPS_PARAMS[0])
         .into_iter()
         .map(|name| name.replace('-', "_"))
         .collect();

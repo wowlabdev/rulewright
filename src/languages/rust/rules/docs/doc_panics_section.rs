@@ -47,7 +47,12 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "unreachable counts",
         code: "/// Dispatches.\npub fn f(x: bool) { if x { unreachable!(); } }",
-        pass: false,
+        pass: true,
+    },
+    Example {
+        label: "doc-hidden support API",
+        code: "/// Test helper.\n#[doc(hidden)]\npub fn f(x: Option<u32>) -> u32 { x.expect(\"fixture invariant\") }",
+        pass: true,
     },
     Example {
         label: "debug_assert does not count",
@@ -84,12 +89,13 @@ crate::ast_rule!(
 );
 
 /// Macro names whose invocation may panic at runtime.
-const PANIC_MACROS: &[&str] = &["panic", "assert", "assert_eq", "assert_ne", "unreachable"];
+const PANIC_MACROS: &[&str] = &["panic", "assert", "assert_eq", "assert_ne"];
 
 fn check_doc_panics_section(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Fn>()
         .filter(is_item_or_impl_fn)
         .filter(|function| !ctx.is_in_test(function) && is_fully_public(function))
+        .filter(|function| !is_doc_hidden(function))
         .filter(can_panic)
         .filter_map(|function| {
             let docs = doc_lines(&function);
@@ -109,6 +115,16 @@ fn check_doc_panics_section(ctx: &AstCtx<'_>) -> Vec<Violation> {
             ))
         })
         .collect()
+}
+
+fn is_doc_hidden(function: &ast::Fn) -> bool {
+    use ra_ap_syntax::ast::HasAttrs;
+
+    function.attrs().any(|attribute| {
+        let source = attribute.syntax().text().to_string();
+
+        source.contains("doc") && source.contains("hidden")
+    })
 }
 
 fn is_fully_public(function: &ast::Fn) -> bool {

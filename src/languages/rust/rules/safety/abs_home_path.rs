@@ -37,7 +37,7 @@ const EXAMPLES: &[Example] = &[
 crate::line_rule!(
     abs_home_path,
     "Ban hardcoded home directory paths like `/Users/` or `/home/` in string literals.",
-    "Absolute home paths break on other machines and in CI. Use environment variables or relative paths.",
+    "Absolute home paths break on other machines and in CI. Resolve runtime paths from configuration, an injected workspace root, or a documented environment variable; scope out test fixtures that intentionally exercise absolute-path behavior.",
     Medium,
 );
 

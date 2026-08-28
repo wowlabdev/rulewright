@@ -19,7 +19,7 @@ pub(super) fn has_derive(item: &impl HasAttrs, target: &str) -> bool {
     })
 }
 
-pub(super) fn type_name(ty: &ast::Type) -> Option<String> {
+pub(crate) fn type_name(ty: &ast::Type) -> Option<String> {
     let ast::Type::PathType(path) = ty else {
         return None;
     };

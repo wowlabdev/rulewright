@@ -104,10 +104,10 @@ crate::ast_rule!(
 
 // #rw(fn: rust_cyclomatic_complexity) each public API item shape has distinct typed-AST field access
 fn check_pub_api_foreign_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let allowed = ctx
-        .file
-        .config
-        .get_str_array("rust_pub_api_foreign_types", &PARAMS[0]);
+    let allowed = ctx.file.config.get_str_array(
+        "rust_pub_api_foreign_types",
+        &PUB_API_FOREIGN_TYPES_PARAMS[0],
+    );
     let mut external = match ctx
         .file
         .config
@@ -115,10 +115,11 @@ fn check_pub_api_foreign_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .external_dep_roots(ctx.file.path)
     {
         Some(roots) => roots.to_vec(),
-        None => ctx
-            .file
-            .config
-            .get_str_array("rust_pub_api_foreign_types", &PARAMS[1]),
+
+        None => ctx.file.config.get_str_array(
+            "rust_pub_api_foreign_types",
+            &PUB_API_FOREIGN_TYPES_PARAMS[1],
+        ),
     };
 
     external.retain(|root| !allowed.iter().any(|sanctioned| sanctioned == root));
@@ -157,6 +158,7 @@ fn check_pub_api_foreign_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
                         }
                     }
                 }
+
                 ast::FieldList::TupleFieldList(fields) => {
                     for field in fields.fields().filter(super::support::is_fully_public) {
                         if let Some(ty) = field.ty() {

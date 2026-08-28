@@ -80,7 +80,7 @@ fn check_concrete_io_param(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let types = ctx
         .file
         .config
-        .get_str_array("rust_concrete_io_param", &PARAMS[0]);
+        .get_str_array("rust_concrete_io_param", &CONCRETE_IO_PARAM_PARAMS[0]);
 
     ctx.nodes::<ast::Fn>()
         .filter(|function| {
@@ -114,7 +114,9 @@ fn io_type_name(ty: ast::Type, types: &[String]) -> Option<String> {
             ast::Type::PathType(path) => path.path()?,
             _ => return None,
         },
+
         ast::Type::PathType(path) => path.path()?,
+
         _ => return None,
     };
     let segments = super::support::path_names(path);
@@ -163,6 +165,7 @@ fn is_std_io_path(segments: &[String]) -> bool {
                     .nth(GRANDPARENT_SEGMENT)
                     .is_some_and(|module| module == "unix")
         }
+
         _ => false,
     }
 }

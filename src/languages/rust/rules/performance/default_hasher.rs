@@ -60,7 +60,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     default_hasher,
     "Flag std `HashMap`/`HashSet` types and constructors that use the default SipHash hasher.",
-    "SipHash buys DoS resistance that trusted internal keys do not need — a fast hasher (foldhash/FxHash) is significantly quicker.",
+    "SipHash's DoS resistance may be unnecessary for trusted internal keys. Choose a faster hasher only after confirming keys cannot be attacker-controlled and hashing is material in the workload; otherwise keep the defensive default and scope or suppress the rule.",
 );
 
 fn check_default_hasher(ctx: &AstCtx<'_>) -> Vec<Violation> {

@@ -99,9 +99,11 @@ fn check_aligned(ctx: &FileCtx<'_>) -> Vec<Violation> {
                     Some(Sep::Arrow) => {
                         check_arrow(ctx.rel, &block, marker_line, &mut out);
                     }
+
                     Some(Sep::Comma) => {
                         check_comma(ctx.rel, &block, marker_line, &mut out);
                     }
+
                     None => {}
                 }
 

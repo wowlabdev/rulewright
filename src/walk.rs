@@ -106,7 +106,9 @@ pub(crate) fn workspace_source_files(root: &Path) -> WalkReport {
             Ok(entry) if entry.file_type().is_some_and(|kind| kind.is_file()) => {
                 files.push(PathBuf::from(entry.into_path()));
             }
+
             Ok(_) => {}
+
             Err(source) => failures.push(Error {
                 root: root.to_path_buf(),
                 source,
@@ -191,7 +193,9 @@ pub(crate) fn visible_source_files_with_boundaries(
             {
                 files.push(PathBuf::from(entry.into_path()));
             }
+
             Ok(_) => {}
+
             Err(source) => failures.push(Error {
                 root: root.to_path_buf(),
                 source,

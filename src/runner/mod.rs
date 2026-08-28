@@ -89,16 +89,27 @@ pub fn cargo_target_dir(root: &Path, workspace_root: &Path) -> PathBuf {
 /// One Cargo workspace package and its canonical package root.
 #[derive(Clone, Debug)]
 pub struct PackageRoot {
+    /// Package name reported by Cargo metadata.
     pub name: String,
+    /// Canonical directory containing the package manifest.
     pub root: PathBuf,
+    /// Whether Cargo metadata permits publishing this package to at least one registry.
+    pub publishable: bool,
+    /// Whether every Rust target in this package is test-only.
+    pub test_only: bool,
+    /// Cargo test, benchmark, and example entry points for this package.
+    pub test_targets: Vec<PathBuf>,
 }
 
-fn package_name_for_path<'a>(packages: &'a [PackageRoot], path: &Path) -> Option<&'a str> {
+fn package_for_path<'a>(packages: &'a [PackageRoot], path: &Path) -> Option<&'a PackageRoot> {
     packages
         .iter()
         .filter(|package| path.starts_with(&package.root))
         .max_by_key(|package| package.root.components().count())
-        .map(|package| package.name.as_str())
+}
+
+fn package_name_for_path<'a>(packages: &'a [PackageRoot], path: &Path) -> Option<&'a str> {
+    package_for_path(packages, path).map(|package| package.name.as_str())
 }
 
 fn resolve_cargo_target_dir(
@@ -176,6 +187,7 @@ pub fn run(
     let (mut all_violations, fixes, tree_fixes, snapshots) =
         match collect_violations(ctx, collect_fixes, None) {
             Ok(result) => result,
+
             Err(error) => {
                 if !ctx.quiet {
                     output::error(&format!("rulewright analysis aborted: {error}"));
@@ -199,6 +211,7 @@ pub fn run(
 
                 true
             }
+
             Err(error) => {
                 if !ctx.quiet {
                     output::error(&error.to_string());
@@ -212,6 +225,7 @@ pub fn run(
     if let Some(path) = baseline_path {
         all_violations = match baseline::filter(path, all_violations) {
             Ok(violations) => violations,
+
             Err(error) => {
                 if !ctx.quiet {
                     output::error(&error.to_string());
@@ -268,7 +282,7 @@ fn enabled_rules(ctx: &RunCtx<'_>) -> Vec<&'static Rule> {
         .collect()
 }
 
-// #rw(fn: rust_alloc_in_loop, rust_cyclomatic_complexity) fixpoint orchestration branches by edit kind and terminal state
+// #rw(fn: rust_cyclomatic_complexity) fixpoint orchestration branches by edit kind and terminal state
 fn apply_and_verify(
     ctx: &RunCtx<'_>,
     fix: FixMode,
@@ -319,6 +333,7 @@ fn apply_and_verify(
         };
         let applied = match applied {
             Ok(applied) => applied,
+
             Err(error) => {
                 if !ctx.quiet {
                     output::error(&format!("failed to apply fixes: {error}"));
@@ -332,6 +347,7 @@ fn apply_and_verify(
         let (remaining, next_fixes, next_tree_fixes, next_snapshots) =
             match collect_violations(ctx, true, None) {
                 Ok(result) => result,
+
                 Err(error) => {
                     if !ctx.quiet {
                         output::error(&format!("rulewright analysis aborted after fixes: {error}"));
@@ -384,6 +400,7 @@ fn apply_and_verify(
 
     let remaining = match collect_violations(ctx, false, None) {
         Ok((remaining, _, _, _)) => remaining,
+
         Err(error) => {
             if !ctx.quiet {
                 output::error(&format!("rulewright analysis aborted after fixes: {error}"));
@@ -467,7 +484,8 @@ pub(crate) fn collect_violations(
     extensions.dedup();
 
     let (paths, target_rels) = analysis_paths(ctx, paths_override, &extensions)?;
-    let test_only_files = languages::rust::test_files::discover(&paths, ctx.root);
+    let test_roots = cargo_test_roots(ctx, &paths);
+    let test_only_files = languages::rust::test_files::discover(&paths, ctx.root, &test_roots);
     let registered_names: HashSet<&str> = ctx
         .registry
         .rules()
@@ -524,6 +542,31 @@ pub(crate) fn collect_violations(
     );
 
     Ok((all_violations, all_fixes, all_tree_fixes, source_snapshots))
+}
+
+fn cargo_test_roots(ctx: &RunCtx<'_>, paths: &[PathBuf]) -> HashSet<String> {
+    let mut roots = HashSet::new();
+
+    for package in ctx.packages {
+        if package.test_only {
+            roots.extend(
+                paths
+                    .iter()
+                    .filter(|path| path.starts_with(&package.root))
+                    .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+                    .filter_map(|path| relative_path(path, ctx.root).ok()),
+            );
+        }
+
+        roots.extend(
+            package
+                .test_targets
+                .iter()
+                .filter_map(|path| relative_path(path, ctx.root).ok()),
+        );
+    }
+
+    roots
 }
 
 fn complete_cache_result(
@@ -631,17 +674,20 @@ fn analysis_paths(
 ) -> Result<(Vec<PathBuf>, Option<HashSet<String>>), AnalysisError> {
     let requested = match paths_override {
         Some(paths) => Some(paths),
+
         None if ctx.dirty => Some(walk::git_dirty_paths(
             ctx.root,
             ctx.workspace_root,
             ctx.package_filter,
             extensions,
         )?),
+
         None if !ctx.package_filter.is_empty() => Some(walk::source_paths(
             ctx.workspace_root,
             ctx.package_filter,
             extensions,
         )?),
+
         None => None,
     };
     let Some(requested) = requested else {
@@ -669,10 +715,12 @@ fn analyze_path(path: &Path, ctx: &RunCtx<'_>, dispatch: &AnalysisDispatch<'_>) 
     let rel = relative_path(path, ctx.root).map_err(|error| error.to_string())?;
     let contents = file::read_text(path).map_err(|error| format!("{rel}: {error}"))?;
     let lines: Vec<&str> = contents.lines().collect();
+    let package = package_for_path(ctx.packages, path);
     let file = FileCtx {
         rel: &rel,
         path,
-        package_name: package_name_for_path(ctx.packages, path),
+        package_name: package.map(|package| package.name.as_str()),
+        package_publishable: package.map(|package| package.publishable),
         lines: &lines,
         contents: &contents,
         config: ctx.config,
@@ -689,7 +737,9 @@ fn analyze_path(path: &Path, ctx: &RunCtx<'_>, dispatch: &AnalysisDispatch<'_>) 
                 languages::rust::FileKind::Production
             },
         ),
+
         Some("toml") => languages::toml::analyze(&file, dispatch.rules, dispatch.collect_fixes),
+
         _ => return Ok(None),
     };
 
@@ -1182,7 +1232,7 @@ mod tests {
         .or_fail()?;
         file::write_text(
             &source_dir.join("validation.rs"),
-            "fn fixture() -> usize { 42 }\n",
+            "fn fixture() { panic!(\"fixture\") }\n",
         )
         .or_fail()?;
         let registry = RuleRegistry::with_builtins().or_fail()?;
@@ -1193,12 +1243,205 @@ mod tests {
                 .map(|rule| (rule.name, rule.params))
                 .collect::<Vec<_>>(),
         );
-        let rule_filter = vec!["rust_magic_numbers".to_owned()];
+        let rule_filter = vec!["rust_panic".to_owned()];
         let ctx = RunCtx {
             registry: &registry,
             rule_filter: &rule_filter,
             package_filter: &[],
             packages: &[],
+            config: &config,
+            root: directory.path(),
+            workspace_root: directory.path(),
+            quiet: true,
+            dirty: false,
+        };
+        let (violations, _, _, _) = collect_violations(&ctx, false, None).or_fail()?;
+
+        verify_true!(violations.is_empty())
+    }
+
+    #[gtest]
+    fn cargo_test_targets_are_classified_before_rule_dispatch() -> Result<()> {
+        let directory = crate::temporary::Directory::new().or_fail()?;
+        let source_dir = directory.path().join("src");
+        let tests_dir = directory.path().join("tests");
+
+        crate::directory::ensure(&source_dir).or_fail()?;
+        crate::directory::ensure(&tests_dir).or_fail()?;
+        file::write_text(&source_dir.join("lib.rs"), "fn production() { panic!() }\n").or_fail()?;
+        let test_target = tests_dir.join("api.rs");
+
+        file::write_text(&test_target, "fn fixture() { panic!() }\n").or_fail()?;
+        let registry = RuleRegistry::with_builtins().or_fail()?;
+        let metadata = registry.metadata();
+        let config = Config::generate_default(
+            &metadata
+                .iter()
+                .map(|rule| (rule.name, rule.params))
+                .collect::<Vec<_>>(),
+        );
+        let rule_filter = vec!["rust_panic".to_owned()];
+        let packages = [PackageRoot {
+            name: "fixture".to_owned(),
+            root: directory.path().to_path_buf(),
+            publishable: true,
+            test_only: false,
+            test_targets: vec![test_target],
+        }];
+        let violations = {
+            let ctx = RunCtx {
+                registry: &registry,
+                rule_filter: &rule_filter,
+                package_filter: &[],
+                packages: &packages,
+                config: &config,
+                root: directory.path(),
+                workspace_root: directory.path(),
+                quiet: true,
+                dirty: false,
+            };
+
+            collect_violations(&ctx, false, None).or_fail()?.0
+        };
+
+        verify_eq!(violations.len(), 1)?;
+
+        verify_eq!(violations[0].rel, "src/lib.rs")
+    }
+
+    #[gtest]
+    fn package_publishability_reaches_downstream_api_rules() -> Result<()> {
+        let directory = crate::temporary::Directory::new().or_fail()?;
+        let private_root = directory.path().join("private");
+        let publishable_root = directory.path().join("publishable");
+        let source = "pub enum Status { Ready, Waiting }\n\npub fn undocumented() {}\n\n/// Parses input.\npub fn parse() -> Result<(), ()> { Ok(()) }\n";
+
+        for root in [&private_root, &publishable_root] {
+            crate::directory::ensure(&root.join("src")).or_fail()?;
+            file::write_text(&root.join("src/lib.rs"), source).or_fail()?;
+        }
+
+        let registry = RuleRegistry::with_builtins().or_fail()?;
+        let metadata = registry.metadata();
+        let config = Config::generate_default(
+            &metadata
+                .iter()
+                .map(|rule| (rule.name, rule.params))
+                .collect::<Vec<_>>(),
+        );
+        let rule_filter = vec![
+            "rust_pub_api_docs".to_owned(),
+            "rust_non_exhaustive_on_public".to_owned(),
+            "rust_doc_errors_section".to_owned(),
+        ];
+        let mut packages = [
+            PackageRoot {
+                name: "private".to_owned(),
+                root: private_root,
+                publishable: false,
+                test_only: false,
+                test_targets: Vec::new(),
+            },
+            PackageRoot {
+                name: "publishable".to_owned(),
+                root: publishable_root,
+                publishable: true,
+                test_only: false,
+                test_targets: Vec::new(),
+            },
+        ];
+        let ctx = RunCtx {
+            registry: &registry,
+            rule_filter: &rule_filter,
+            package_filter: &[],
+            packages: &packages,
+            config: &config,
+            root: directory.path(),
+            workspace_root: directory.path(),
+            quiet: true,
+            dirty: false,
+        };
+        let (violations, _, _, _) = collect_violations(&ctx, false, None).or_fail()?;
+
+        verify_eq!(violations.len(), 4)?;
+
+        verify_true!(
+            violations
+                .iter()
+                .all(|violation| violation.rel == "publishable/src/lib.rs")
+        )?;
+
+        let rules = violations
+            .iter()
+            .map(Violation::rule_name)
+            .collect::<Vec<_>>();
+
+        verify_eq!(
+            rules,
+            [
+                "rust_non_exhaustive_on_public",
+                "rust_pub_api_docs",
+                "rust_pub_api_docs",
+                "rust_doc_errors_section",
+            ]
+        )?;
+
+        packages[0].publishable = true;
+        packages[1].publishable = false;
+
+        let ctx = RunCtx {
+            registry: &registry,
+            rule_filter: &rule_filter,
+            package_filter: &[],
+            packages: &packages,
+            config: &config,
+            root: directory.path(),
+            workspace_root: directory.path(),
+            quiet: true,
+            dirty: false,
+        };
+        let (violations, _, _, _) = collect_violations(&ctx, false, None).or_fail()?;
+
+        verify_eq!(violations.len(), 4)?;
+        verify_true!(
+            violations
+                .iter()
+                .all(|violation| violation.rel == "private/src/lib.rs")
+        )
+    }
+
+    #[gtest]
+    fn test_only_packages_exclude_all_rust_targets_from_production_rules() -> Result<()> {
+        let directory = crate::temporary::Directory::new().or_fail()?;
+        let source_dir = directory.path().join("src");
+
+        crate::directory::ensure(&source_dir).or_fail()?;
+        file::write_text(
+            &source_dir.join("lib.rs"),
+            "//! Test fixture crate.\n\nfn fixture() { panic!() }\n",
+        )
+        .or_fail()?;
+        let registry = RuleRegistry::with_builtins().or_fail()?;
+        let metadata = registry.metadata();
+        let config = Config::generate_default(
+            &metadata
+                .iter()
+                .map(|rule| (rule.name, rule.params))
+                .collect::<Vec<_>>(),
+        );
+        let rule_filter = vec!["rust_module_docs".to_owned(), "rust_panic".to_owned()];
+        let packages = [PackageRoot {
+            name: "fixture-tests".to_owned(),
+            root: directory.path().to_path_buf(),
+            publishable: true,
+            test_only: true,
+            test_targets: Vec::new(),
+        }];
+        let ctx = RunCtx {
+            registry: &registry,
+            rule_filter: &rule_filter,
+            package_filter: &[],
+            packages: &packages,
             config: &config,
             root: directory.path(),
             workspace_root: directory.path(),

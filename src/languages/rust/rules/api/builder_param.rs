@@ -20,6 +20,11 @@ const EXAMPLES: &[Example] = &[
         pass: false,
     },
     Example {
+        label: "mutable builder accumulation context",
+        code: "fn add_fields(builder: &mut WidgetBuilder) { builder.field(1); }",
+        pass: true,
+    },
+    Example {
         label: "closure factory parameter",
         code: "fn make(f: impl Fn() -> Widget) {}",
         pass: true,
@@ -38,8 +43,8 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     builder_param,
-    "Flag parameters typed `*Builder`/`*Factory` — ask for `impl Fn() -> T` instead.",
-    "Accepting factories or builders as parameters imports OO indirection; an impl Fn() -> T expresses repeatable instantiation idiomatically.",
+    "Flag owned/shared parameters typed `*Builder`/`*Factory` — ask for `impl Fn() -> T` instead.",
+    "Accepting an owned builder or shared factory as a parameter often imports OO indirection; an impl Fn() -> T expresses repeatable instantiation idiomatically. A mutable builder reference is an explicit accumulation context and should be passed directly.",
     Low,
 );
 
@@ -69,6 +74,7 @@ fn check_builder_param(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
 fn weasel_param_ident(ty: &ast::Type) -> Option<String> {
     let inner = match ty {
+        ast::Type::RefType(reference) if reference.mut_token().is_some() => return None,
         ast::Type::RefType(reference) => reference.ty()?,
         _ => ty.clone(),
     };

@@ -10,8 +10,8 @@ const EXAMPLES: &[Example] = &[];
 
 crate::line_rule!(
     too_many_lines_in_file,
-    "Flag files exceeding threshold lines.",
-    "Files over 1500 lines are a sign that the module has too many responsibilities and should be split.",
+    "Flag files exceeding the configured nonblank-line threshold.",
+    "A very large file often contains several responsibilities. Split it along domain or ownership boundaries with clear module names; do not scatter one cohesive implementation across arbitrary numbered files, and tune the threshold when separation would make navigation worse.",
     Medium,
     params {
         threshold: i64 = 1500,
@@ -20,12 +20,14 @@ crate::line_rule!(
 );
 
 fn check_too_many_lines_in_file(ctx: &FileCtx<'_>) -> Vec<Violation> {
-    let max_lines = ctx
-        .config
-        .get_usize("rust_too_many_lines_in_file", &PARAMS[0]);
-    let slack_percent = ctx
-        .config
-        .get_usize("rust_too_many_lines_in_file", &PARAMS[1]);
+    let max_lines = ctx.config.get_usize(
+        "rust_too_many_lines_in_file",
+        &TOO_MANY_LINES_IN_FILE_PARAMS[0],
+    );
+    let slack_percent = ctx.config.get_usize(
+        "rust_too_many_lines_in_file",
+        &TOO_MANY_LINES_IN_FILE_PARAMS[1],
+    );
     let budget = ctx.lines.iter().find_map(|line| {
         let crate::infra::parse::DirectiveResult::Valid(directive) =
             crate::infra::parse::directive(line)?
@@ -40,19 +42,18 @@ fn check_too_many_lines_in_file(ctx: &FileCtx<'_>) -> Vec<Violation> {
     let allowed = budget.map_or(max_lines, |budget| {
         budget.saturating_mul(PERCENT_DENOMINATOR + slack_percent) / PERCENT_DENOMINATOR
     });
+    let line_count = nonblank_line_count(ctx.lines.iter().copied());
 
-    if ctx.lines.len() > allowed {
+    if line_count > allowed {
         let message = budget.map_or_else(
             || {
                 format!(
-                    "file has {} lines (max {max_lines}), consider splitting into smaller modules",
-                    ctx.lines.len()
+                    "file has {line_count} nonblank lines (max {max_lines}), consider splitting into smaller modules",
                 )
             },
             |budget| {
                 format!(
-                    "file has {} lines, exceeding declared budget {budget} with {slack_percent}% slack (max {allowed})",
-                    ctx.lines.len()
+                    "file has {line_count} nonblank lines, exceeding declared budget {budget} with {slack_percent}% slack (max {allowed})",
                 )
             },
         );
@@ -61,6 +62,13 @@ fn check_too_many_lines_in_file(ctx: &FileCtx<'_>) -> Vec<Violation> {
     } else {
         Vec::new()
     }
+}
+
+fn nonblank_line_count<'a>(lines: impl IntoIterator<Item = &'a str>) -> usize {
+    lines
+        .into_iter()
+        .filter(|line| !line.trim().is_empty())
+        .count()
 }
 
 crate::rulewright_test!(check_too_many_lines_in_file, {
@@ -73,7 +81,7 @@ crate::rulewright_test!(check_too_many_lines_in_file, {
         let v = run(&source);
         verify_eq!(v.len(), 1)?;
         verify_eq!(v[0].line, 1)?;
-        verify_true!(v[0].message.contains("1501 lines"))?;
+        verify_true!(v[0].message.contains("1501 nonblank lines"))?;
 
         Ok(())
     }
@@ -109,5 +117,15 @@ crate::rulewright_test!(check_too_many_lines_in_file, {
         verify_true!(violations[0].message.contains("declared budget 1300"))?;
 
         Ok(())
+    }
+
+    #[gtest]
+    fn readability_spacing_does_not_consume_the_file_budget() -> Result<()> {
+        let source = (0..1500)
+            .flat_map(|i| [format!("// line {i}"), String::new()])
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        verify_true!(run(&source).is_empty())
     }
 });

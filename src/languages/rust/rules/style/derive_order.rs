@@ -76,8 +76,6 @@ fn is_sorted(entries: &[String]) -> bool {
         .all(|pair| pair[0] <= pair[1])
 }
 
-// #rw(fn: rust_alloc_in_loop) each changed derive needs a freshly formatted replacement attribute
-// #rw(fn: rust_clone_in_loop) syntax-editor replacements must be detached nodes
 fn fix_derive_order(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
     let mut changed = false;
@@ -116,5 +114,5 @@ fn parse_attr(source: &str) -> Option<ast::Attr> {
 
 crate::rulewright_ast_test!(check_derive_order, {
     crate::example_tests!(EXAMPLES, check_derive_order);
-    crate::fix_tests!(ast_tree, check_derive_order, fix_derive_order);
+    crate::fix_tests!(EXAMPLES, ast_tree, check_derive_order, fix_derive_order);
 });

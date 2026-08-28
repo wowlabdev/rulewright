@@ -29,7 +29,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     large_fn_params,
     "Flag functions with > threshold parameters.",
-    "Functions with many parameters are hard to call correctly. Group related params into a struct.",
+    "Functions with many parameters are hard to call correctly. Group parameters that form one domain concept, split unrelated responsibilities, or use named options; do not create a miscellaneous argument struct solely to satisfy the threshold.",
     Medium,
     params { threshold: i64 = 6 },
 );
@@ -38,7 +38,7 @@ fn check_large_fn_params(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let max_params = ctx
         .file
         .config
-        .get_usize("rust_large_fn_params", &PARAMS[0]);
+        .get_usize("rust_large_fn_params", &LARGE_FN_PARAMS_PARAMS[0]);
 
     ctx.nodes::<ast::Fn>()
         .filter(|function| !ctx.is_in_test(function))

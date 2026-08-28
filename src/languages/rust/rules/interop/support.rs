@@ -59,6 +59,7 @@ pub(super) fn field_types(list: ast::FieldList) -> Vec<ast::Type> {
         ast::FieldList::RecordFieldList(fields) => {
             fields.fields().filter_map(|field| field.ty()).collect()
         }
+
         ast::FieldList::TupleFieldList(fields) => {
             fields.fields().filter_map(|field| field.ty()).collect()
         }

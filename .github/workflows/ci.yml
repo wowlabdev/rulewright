@@ -36,7 +36,7 @@ jobs:
             ~/.cargo/git
             target
           key: clippy-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})
@@ -54,7 +54,7 @@ jobs:
             ~/.cargo/git
             target
           key: test-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-      - run: cargo test --workspace --all-targets --locked
+      - run: cargo test --workspace --all-targets --all-features --locked
 
   msrv:
     name: Rust 1.95 compatibility
@@ -69,7 +69,7 @@ jobs:
             ~/.cargo/git
             target
           key: msrv-${{ runner.os }}-1.95-${{ hashFiles('Cargo.lock') }}
-      - run: cargo +1.95 check --workspace --all-targets --locked
+      - run: cargo +1.95 check --workspace --all-targets --all-features --locked
 
   rustdoc:
     name: rustdoc
@@ -85,7 +85,7 @@ jobs:
             ~/.cargo/git
             target
           key: rustdoc-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-      - run: cargo doc --workspace --no-deps --locked
+      - run: cargo doc --workspace --no-deps --all-features --locked
 
   rulewright:
     name: Rulewright self-analysis

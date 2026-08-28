@@ -35,10 +35,10 @@ fn check_toml_cargo_feature_names(ctx: &TomlCtx<'_>) -> Vec<Violation> {
     let Some(features) = document.get("features").and_then(toml::Value::as_table) else {
         return Vec::new();
     };
-    let allowed = ctx
-        .file
-        .config
-        .get_str_array("toml_cargo_feature_names", &PARAMS[0]);
+    let allowed = ctx.file.config.get_str_array(
+        "toml_cargo_feature_names",
+        &TOML_CARGO_FEATURE_NAMES_PARAMS[0],
+    );
 
     features
         .keys()

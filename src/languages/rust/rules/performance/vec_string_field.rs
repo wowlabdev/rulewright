@@ -1,8 +1,9 @@
 use ra_ap_syntax::{
     AstNode, ast,
-    ast::{HasGenericArgs, HasVisibility},
+    ast::{HasGenericArgs, HasName, HasVisibility},
 };
 
+use crate::languages::rust::rules::api::support::type_name;
 use crate::{AstCtx, Example, Violation};
 
 #[rustfmt::skip]
@@ -16,6 +17,11 @@ const EXAMPLES: &[Example] = &[
         label: "private Vec<Vec<T>> field",
         code: "struct S { grid: Vec<Vec<u8>> }",
         pass: false,
+    },
+    Example {
+        label: "nested vectors mutated after construction",
+        code: "struct S { grid: Vec<Vec<u8>> } impl S { fn push(&mut self, row: usize, value: u8) { self.grid.get_mut(row).unwrap().push(value); } }",
+        pass: true,
     },
     Example {
         label: "pub(crate) field is not fully public",
@@ -69,7 +75,13 @@ fn check_vec_string_field(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let records = ctx
         .nodes::<ast::RecordField>()
         .filter(|field| !ctx.is_in_test(field) && is_struct_field(field))
-        .filter_map(|field| field_message(field.visibility(), field.ty()).map(|msg| (field, msg)));
+        .filter_map(|field| {
+            let message = field_message(field.visibility(), field.ty())?;
+            let name = field.name()?.text().to_string();
+            let owner = enclosing_struct_name(&field)?;
+
+            (!field_elements_are_mutated(ctx, &owner, &name)).then_some((field, message))
+        });
     let tuples = ctx
         .nodes::<ast::TupleField>()
         .filter(|field| !ctx.is_in_test(field) && is_struct_field(field))
@@ -79,6 +91,49 @@ fn check_vec_string_field(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .map(|(field, message)| ctx.violation(&field, message))
         .chain(tuples.map(|(field, message)| ctx.violation(&field, message)))
         .collect()
+}
+
+fn enclosing_struct_name(field: &ast::RecordField) -> Option<String> {
+    field
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .find_map(ast::Struct::cast)?
+        .name()
+        .map(|name| name.text().to_string())
+}
+
+fn field_elements_are_mutated(ctx: &AstCtx<'_>, owner: &str, field: &str) -> bool {
+    const MUTABLE_ACCESSORS: &[&str] = &[
+        "as_mut_slice",
+        "first_mut",
+        "get_mut",
+        "iter_mut",
+        "last_mut",
+    ];
+
+    ctx.nodes::<ast::Impl>()
+        .filter(|item| item.trait_().is_none())
+        .filter(|item| item.self_ty().and_then(|ty| type_name(&ty)).as_deref() == Some(owner))
+        .flat_map(|item| {
+            item.syntax()
+                .descendants()
+                .filter_map(ast::MethodCallExpr::cast)
+        })
+        .any(|call| {
+            let accesses_mutably = call
+                .name_ref()
+                .is_some_and(|method| MUTABLE_ACCESSORS.contains(&method.text().as_str()));
+            let receiver = call
+                .receiver()
+                .map(|receiver| receiver.syntax().text().to_string());
+
+            accesses_mutably
+                && receiver.is_some_and(|receiver| {
+                    receiver == format!("self.{field}")
+                        || receiver.starts_with(&format!("self.{field}."))
+                })
+        })
 }
 
 fn is_struct_field<N>(field: &N) -> bool

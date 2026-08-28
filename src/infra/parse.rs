@@ -72,7 +72,9 @@ pub(crate) fn balanced_extract<'a>(
                 pos = rest.len() - scan.len();
                 continue;
             }
+
             '(' => depth += 1,
+
             ')' => {
                 depth -= 1;
 
@@ -81,6 +83,7 @@ pub(crate) fn balanced_extract<'a>(
                     return Some((before, &rest[..pos], &rest[pos + 1..]));
                 }
             }
+
             _ => {}
         }
 
@@ -286,24 +289,6 @@ pub(crate) fn rewrite_directive_rules(line: &str, scope: &Scope, rules: &[&str])
         replacement,
         line.get(targets_end..)?
     ))
-}
-
-/// Check whether a string contains an http(s) URL, returning the start position.
-// #rw(fn: rust_hardcoded_url) URL scheme literals are the thing being detected
-pub(crate) fn find_url(line: &str) -> Option<usize> {
-    use winnow::token::take_until;
-    let mut remaining = line;
-
-    loop {
-        let _skipped: &str = try_parse(&mut remaining, take_until(0.., "http"))?;
-        let offset = line.len() - remaining.len();
-
-        if matches(remaining, alt(("https://", "http://"))) {
-            return Some(offset);
-        }
-
-        let _ = try_parse(&mut remaining, "http");
-    }
 }
 
 /// Return `true` if the line starts with `#[allow(` or `#![allow(`.

@@ -113,8 +113,20 @@ fn check_toml_cargo_workspace_lints(ctx: &TomlCtx<'_>) -> Vec<Violation> {
     if ctx.file.rel == CARGO_WORKSPACE_REL && document.contains_key("workspace") {
         let mut violations = Vec::new();
 
-        required_group_violations(ctx, &document, "rust", &PARAMS[0], &mut violations);
-        required_group_violations(ctx, &document, "clippy", &PARAMS[1], &mut violations);
+        required_group_violations(
+            ctx,
+            &document,
+            "rust",
+            &TOML_CARGO_WORKSPACE_LINTS_PARAMS[0],
+            &mut violations,
+        );
+        required_group_violations(
+            ctx,
+            &document,
+            "clippy",
+            &TOML_CARGO_WORKSPACE_LINTS_PARAMS[1],
+            &mut violations,
+        );
 
         return violations;
     }
@@ -147,7 +159,9 @@ fn required_group_violations(
                 key_line(ctx.file.lines, &section, &lint),
                 format!("[{section}] sets `{lint}` to allow; it is required at warn or deny"),
             )),
+
             Some(_) => {}
+
             None => violations.push(violation(
                 ctx.file.rel,
                 section_line(ctx.file.lines, &section),

@@ -61,7 +61,7 @@ fn fix_style(ctx: &FileCtx<'_>, v: &Violation) -> Option<Fix> {
 
 crate::rulewright_test!(check_style, {
     crate::example_tests!(EXAMPLES, check_style);
-    crate::fix_tests!(line, check_style, fix_style);
+    crate::fix_tests!(EXAMPLES, line, check_style, fix_style);
 
     #[gtest]
     fn cr_line_ending() -> Result<()> {

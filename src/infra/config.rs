@@ -1,4 +1,3 @@
-// #rw(file: rust_alloc_in_loop) config validation error messages
 // #rw(file: rust_default_hasher, rust_missing_capacity, rust_vec_string_field) cold config-load path; hashing, preallocation, and boxed slices are not bottlenecks
 
 use std::collections::{BTreeMap, HashSet};
@@ -10,6 +9,10 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 use crate::{ParamDefault, ParamType, RuleParam};
+
+const fn enabled_by_default() -> bool {
+    true
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 struct RawRuleConfig {
@@ -23,6 +26,8 @@ struct RawRuleConfig {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawConfig {
+    #[serde(default = "enabled_by_default")]
+    allow_suppressions: bool,
     #[serde(default)]
     glob_sets: BTreeMap<String, Vec<String>>,
     rules: BTreeMap<String, RawRuleConfig>,
@@ -30,7 +35,6 @@ struct RawConfig {
 
 /// Resolved rule configuration (glob set names expanded to patterns).
 #[derive(Clone, Debug, Serialize)]
-// #rw(rust_similar_structs) resolved patterns and raw glob-set names are distinct configuration states
 pub(crate) struct RuleConfig {
     pub(crate) enabled: bool,
     pub(crate) ignore: Vec<String>,
@@ -41,6 +45,7 @@ pub(crate) struct RuleConfig {
 /// Top-level rulewright configuration loaded from `rulewright.toml`.
 #[derive(Debug, Serialize)]
 pub struct Config {
+    allow_suppressions: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     glob_sets: BTreeMap<String, Vec<String>>,
     pub(crate) rules: BTreeMap<String, RuleConfig>,
@@ -109,6 +114,12 @@ impl Config {
         self.rules.get(name).is_some_and(|r| r.enabled)
     }
 
+    /// Whether source-level `#rw(...)` suppression directives are permitted.
+    #[must_use]
+    pub const fn allows_suppressions(&self) -> bool {
+        self.allow_suppressions
+    }
+
     pub fn ignore_patterns(&self, name: &str) -> &[String] {
         self.rules.get(name).map_or(&[], |r| &r.ignore)
     }
@@ -124,6 +135,7 @@ impl Config {
         configured.map_or_else(
             || match &param.default {
                 ParamDefault::StringArray(d) => d.iter().map(ToString::to_string).collect(),
+
                 ParamDefault::Int(_) => {
                     unreachable!("get_str_array is only called for StringArray params")
                 }
@@ -147,7 +159,6 @@ impl Config {
 
         for (name, params) in registered {
             let Some(rule_cfg) = self.rules.get(*name) else {
-                // #rw(rust_alloc_in_loop) error messages are rare
                 warnings.push(format!(
                     "rule `{name}` is registered but missing from rulewright.toml — \
                      using defaults (run `rulewright --init` to regenerate)"
@@ -163,7 +174,6 @@ impl Config {
 
             for key in rule_cfg.params.keys() {
                 if !known.contains(key.as_str()) {
-                    // #rw(rust_alloc_in_loop) error messages are rare
                     errors.push(format!(
                         "rule `{name}` has unknown param `{key}` in rulewright.toml — \
                          remove it or check for typos"
@@ -174,7 +184,6 @@ impl Config {
 
         for name in self.rules.keys() {
             if !registered_set.contains(name.as_str()) {
-                // #rw(rust_alloc_in_loop) error messages are rare
                 warnings.push(format!(
                     "rulewright.toml contains unknown rule `{name}` — \
                      remove it or check for typos"
@@ -193,6 +202,7 @@ impl Config {
                 for p in *params {
                     let val = match &p.default {
                         ParamDefault::Int(d) => toml::Value::Integer(*d),
+
                         ParamDefault::StringArray(d) => toml::Value::Array(
                             d.iter()
                                 .map(|s| toml::Value::String(s.to_string()))
@@ -231,6 +241,7 @@ impl Config {
             for p in *params {
                 let val = match &p.default {
                     ParamDefault::Int(d) => toml::Value::Integer(*d),
+
                     ParamDefault::StringArray(d) => toml::Value::Array(
                         d.iter()
                             .map(|s| toml::Value::String(s.to_string()))
@@ -252,6 +263,7 @@ impl Config {
         }
 
         Config {
+            allow_suppressions: true,
             glob_sets: BTreeMap::new(),
             rules,
             workspace: super::workspace::WorkspaceContext::default(),
@@ -260,6 +272,7 @@ impl Config {
 
     pub(crate) fn generate_registry_default(registered: &[crate::RuleMeta]) -> Config {
         let mut config = Config {
+            allow_suppressions: true,
             glob_sets: BTreeMap::new(),
             rules: BTreeMap::new(),
             workspace: super::workspace::WorkspaceContext::default(),
@@ -283,6 +296,7 @@ impl Config {
 #
 # Every registered rule MUST appear here. Omitting a rule is an error.
 # Set `enabled = false` to disable a rule without removing its config.
+# Set `allow_suppressions = false` to reject every source-level #rw(...) directive.
 # Run `rulewright --init` to generate a fresh config with all rules.
 #
 # [glob_sets] defines named pattern collections.
@@ -337,6 +351,7 @@ impl Config {
             .and_then(toml::Value::as_integer)
             .unwrap_or_else(|| match param.default {
                 ParamDefault::Int(d) => d,
+
                 ParamDefault::StringArray(_) => {
                     unreachable!("get_i64 is only called for Int params")
                 }
@@ -349,7 +364,7 @@ impl Config {
     }
 
     // #rw(rust_getter_prefix) keyed param lookup mirrors the toml::Value getter family
-    pub(crate) fn get_usize(&self, rule: &str, param: &RuleParam) -> usize {
+    pub fn get_usize(&self, rule: &str, param: &RuleParam) -> usize {
         usize::try_from(self.get_i64(rule, param)).unwrap_or_default()
     }
 
@@ -367,6 +382,7 @@ impl Config {
             .map(|parameter| {
                 let value = match &parameter.default {
                     ParamDefault::Int(default) => toml::Value::Integer(*default),
+
                     ParamDefault::StringArray(default) => toml::Value::Array(
                         default
                             .iter()
@@ -414,19 +430,18 @@ impl Config {
                     Some(patterns) => {
                         for p in patterns {
                             if !ignore.contains(p) {
-                                // #rw(rust_clone_in_loop) need owned String for ignore vec, patterns come from a different collection
                                 ignore.push(p.clone());
                             }
                         }
                     }
+
                     None if explicit_set.is_some() => {
-                        // #rw(rust_alloc_in_loop) error messages are rare, clarity over performance
                         errors.push(format!(
                             "rule `{rule_name}` references unknown glob set `{set_name}` — \
                              add it to [glob_sets] or fix the typo"
                         ));
                     }
-                    // #rw(rust_clone_in_loop) literal patterns cross from raw into resolved config ownership
+
                     None if !ignore.contains(entry) => {
                         if let Err(error) = crate::glob::validate(entry) {
                             errors.push(format!(
@@ -436,17 +451,16 @@ impl Config {
 
                         ignore.push(entry.clone());
                     }
+
                     None => {}
                 }
             }
 
             rules.insert(
-                // #rw(rust_clone_in_loop) need owned key for BTreeMap insert
                 rule_name.clone(),
                 RuleConfig {
                     enabled: raw_rule.enabled,
                     ignore,
-                    // #rw(rust_clone_in_loop) need owned BTreeMap for each resolved rule
                     params: raw_rule.params.clone(),
                 },
             );
@@ -459,10 +473,18 @@ impl Config {
         }
 
         Ok(Config {
+            allow_suppressions: raw.allow_suppressions,
             glob_sets: raw.glob_sets,
             rules,
             workspace: super::workspace::WorkspaceContext::default(),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn with_suppressions_allowed(mut self, allowed: bool) -> Self {
+        self.allow_suppressions = allowed;
+
+        self
     }
 
     fn validate_param(rule: &str, param: &RuleParam, cfg: &RuleConfig, errors: &mut Vec<String>) {
@@ -470,6 +492,7 @@ impl Config {
             Some(val) => {
                 let ok = match param.param_type {
                     ParamType::Int => val.as_integer().is_some_and(|value| value >= 0),
+
                     ParamType::StringArray => val.as_array().is_some_and(|values| {
                         let strings: Option<Vec<&str>> =
                             values.iter().map(toml::Value::as_str).collect();
@@ -491,9 +514,11 @@ impl Config {
                 if !ok {
                     let expected = match param.param_type {
                         ParamType::Int => "a non-negative integer",
+
                         ParamType::StringArray if !param.allowed_values.is_empty() => {
                             "a duplicate-free array of allowed strings"
                         }
+
                         ParamType::StringArray => "an array of strings",
                     };
 
@@ -503,6 +528,7 @@ impl Config {
                     ));
                 }
             }
+
             None => {
                 errors.push(format!(
                     "rule `{rule}` is missing required param `{}` — \

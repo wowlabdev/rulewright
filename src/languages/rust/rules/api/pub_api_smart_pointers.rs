@@ -137,6 +137,7 @@ fn first_type_arg(segment: &ast::PathSegment) -> Option<ast::Type> {
 fn is_dst(ty: &ast::Type) -> bool {
     match ty {
         ast::Type::SliceType(_) => true,
+
         ast::Type::PathType(path) => {
             let segment = path
                 .path()
@@ -145,6 +146,7 @@ fn is_dst(ty: &ast::Type) -> bool {
 
             segment.is_some_and(|name| name.text() == "str")
         }
+
         _ => false,
     }
 }

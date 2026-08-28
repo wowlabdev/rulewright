@@ -1,4 +1,4 @@
-use ra_ap_syntax::ast;
+use ra_ap_syntax::ast::{self, HasGenericArgs as _};
 
 use crate::{AstCtx, Example, Violation};
 
@@ -13,6 +13,11 @@ const EXAMPLES: &[Example] = &[
         label: "collect then into_iter",
         code: "fn f() { (0..10).collect::<Vec<i32>>().into_iter().count(); }",
         pass: false,
+    },
+    Example {
+        label: "set collect changes semantics",
+        code: "fn f() { (0..10).collect::<HashSet<i32>>().into_iter().collect::<Vec<_>>(); }",
+        pass: true,
     },
     Example {
         label: "separate collect",
@@ -34,7 +39,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     unnecessary_collect,
     "Flag `.collect().iter()` — remove the intermediate collection.",
-    "Collecting into a Vec just to iterate it again wastes an allocation. Chain the iterators directly.",
+    "Collecting into a Vec for one immediate pass usually wastes an allocation. Chain the iterators when evaluation order and borrowing remain correct; keep the collection when it establishes an ownership boundary, permits mutation, or is reused.",
 );
 
 fn check_unnecessary_collect(ctx: &AstCtx<'_>) -> Vec<Violation> {
@@ -50,6 +55,12 @@ fn check_unnecessary_collect(ctx: &AstCtx<'_>) -> Vec<Violation> {
             let ast::Expr::MethodCallExpr(receiver) = call.receiver()? else {
                 return None;
             };
+
+            let collection = receiver.generic_arg_list()?.to_string().replace(' ', "");
+
+            if !collection.starts_with("::<Vec<") {
+                return None;
+            }
 
             receiver
                 .name_ref()

@@ -5,23 +5,26 @@ use line_index::LineIndex;
 use ra_ap_syntax::{Edition, SourceFile};
 
 use crate::{
-    AstCtx, FileCtx, TomlCtx, Violation,
-    infra::{
-        config::{Config, RuleConfig},
-        fix::Fix,
-    },
+    AstCtx, FileCtx, Violation,
+    infra::config::{Config, RuleConfig},
 };
 
-fn package_name_from_path(rel: &str) -> Option<&str> {
-    let components: Vec<&str> = rel.split('/').collect();
-    let source = components
-        .iter()
-        .position(|component| *component == "src")?;
+pub(crate) use crate::testing::{
+    apply_ast_fixes, apply_ast_tree_fix, apply_line_fixes, check_source_ast_at, check_source_at,
+    check_source_toml_at,
+};
 
-    source
-        .checked_sub(1)
-        .and_then(|index| components.get(index).copied())
-        .or(Some("fixture"))
+pub(crate) fn check_source_ast_publishability(
+    source: &str,
+    publishable: bool,
+    check: fn(&AstCtx<'_>) -> Vec<Violation>,
+) -> Vec<Violation> {
+    crate::testing::check_source_ast_at_with_publishability(
+        "fixture/src/lib.rs",
+        source,
+        Some(publishable),
+        check,
+    )
 }
 
 pub(crate) fn check_workspace_sources(
@@ -66,6 +69,7 @@ fn check_workspace_sources_with_config(
             rel,
             path: Path::new(rel),
             package_name: None,
+            package_publishable: None,
             lines: &lines,
             contents: source,
             config,
@@ -105,6 +109,7 @@ pub(crate) fn check_workspace_member(
         rel: &rel,
         path: Path::new(&rel),
         package_name: None,
+        package_publishable: None,
         lines: &lines,
         contents: source,
         config: &config,
@@ -148,6 +153,27 @@ fn test_config() -> Config {
     Config::generate_default(&[])
 }
 
+pub(crate) fn check_source_params(
+    source: &str,
+    rule: &str,
+    params: &[(&str, &[&str])],
+    check: fn(&FileCtx<'_>) -> Vec<Violation>,
+) -> Vec<Violation> {
+    let cfg = config_with_string_params(rule, params);
+    let lines: Vec<&str> = source.lines().collect();
+    let ctx = FileCtx {
+        rel: "test.rs",
+        path: Path::new("test.rs"),
+        package_name: None,
+        package_publishable: None,
+        lines: &lines,
+        contents: source,
+        config: &cfg,
+    };
+
+    check(&ctx)
+}
+
 /// Run an AST check against `test.rs` with explicit string-array params for one rule.
 ///
 /// # Panics
@@ -159,6 +185,28 @@ pub(crate) fn check_source_ast_params(
     params: &[(&str, &[&str])],
     check: fn(&AstCtx<'_>) -> Vec<Violation>,
 ) -> Vec<Violation> {
+    let cfg = config_with_string_params(rule, params);
+    let lines: Vec<&str> = source.lines().collect();
+    let file_ctx = FileCtx {
+        rel: "test.rs",
+        path: Path::new("test.rs"),
+        package_name: None,
+        package_publishable: None,
+        lines: &lines,
+        contents: source,
+        config: &cfg,
+    };
+    let ra_parse = SourceFile::parse(source, Edition::Edition2024);
+
+    assert!(ra_parse.errors().is_empty(), "test source must parse");
+    let root = ra_parse.tree();
+    let line_index = LineIndex::new(source);
+    let ast_ctx = AstCtx::new(&file_ctx, &root, &line_index, false);
+
+    check(&ast_ctx)
+}
+
+fn config_with_string_params(rule: &str, params: &[(&str, &[&str])]) -> Config {
     let mut cfg = test_config();
     let mut param_map = BTreeMap::new();
 
@@ -182,260 +230,6 @@ pub(crate) fn check_source_ast_params(
             params: param_map,
         },
     );
-    let lines: Vec<&str> = source.lines().collect();
-    let file_ctx = FileCtx {
-        rel: "test.rs",
-        path: Path::new("test.rs"),
-        package_name: None,
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-    let ra_parse = SourceFile::parse(source, Edition::Edition2024);
 
-    assert!(ra_parse.errors().is_empty(), "test source must parse");
-    let root = ra_parse.tree();
-    let line_index = LineIndex::new(source);
-    let ast_ctx = AstCtx {
-        file: &file_ctx,
-        root: &root,
-        line_index: &line_index,
-        test_only_file: false,
-    };
-
-    check(&ast_ctx)
-}
-
-pub(crate) fn check_source_toml(
-    source: &str,
-    check: fn(&TomlCtx<'_>) -> Vec<Violation>,
-) -> Vec<Violation> {
-    let cfg = test_config();
-    let lines: Vec<&str> = source.lines().collect();
-    let file_ctx = FileCtx {
-        rel: "config/policy.toml",
-        path: Path::new("config/policy.toml"),
-        package_name: None,
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-    let parse = taplo::parser::parse(source);
-    let dom = parse.clone().into_dom();
-
-    check(&TomlCtx {
-        file: &file_ctx,
-        parse: &parse,
-        dom: &dom,
-    })
-}
-
-pub(crate) fn check_source_at(
-    rel: &str,
-    source: &str,
-    check: fn(&FileCtx<'_>) -> Vec<Violation>,
-) -> Vec<Violation> {
-    let cfg = test_config();
-    let lines: Vec<&str> = source.lines().collect();
-    let ctx = FileCtx {
-        rel,
-        path: Path::new(rel),
-        package_name: package_name_from_path(rel),
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-
-    check(&ctx)
-}
-
-pub(crate) fn check_source_ast_at(
-    rel: &str,
-    source: &str,
-    check: fn(&AstCtx<'_>) -> Vec<Violation>,
-) -> Vec<Violation> {
-    let cfg = test_config();
-    let lines: Vec<&str> = source.lines().collect();
-    let file_ctx = FileCtx {
-        rel,
-        path: Path::new(rel),
-        package_name: package_name_from_path(rel),
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-    let ra_parse = SourceFile::parse(source, Edition::Edition2024);
-
-    assert!(ra_parse.errors().is_empty(), "test source must parse");
-    let root = ra_parse.tree();
-    let line_index = LineIndex::new(source);
-    let ast_ctx = AstCtx {
-        file: &file_ctx,
-        root: &root,
-        line_index: &line_index,
-        test_only_file: false,
-    };
-
-    check(&ast_ctx)
-}
-
-pub(crate) fn check_source_toml_at(
-    rel: &str,
-    source: &str,
-    check: fn(&TomlCtx<'_>) -> Vec<Violation>,
-) -> Vec<Violation> {
-    let cfg = test_config();
-    let lines: Vec<&str> = source.lines().collect();
-    let file_ctx = FileCtx {
-        rel,
-        path: Path::new(rel),
-        package_name: None,
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-    let parse = taplo::parser::parse(source);
-    let dom = parse.clone().into_dom();
-
-    check(&TomlCtx {
-        file: &file_ctx,
-        parse: &parse,
-        dom: &dom,
-    })
-}
-
-pub(crate) fn check_source(
-    source: &str,
-    check: fn(&FileCtx<'_>) -> Vec<Violation>,
-) -> Vec<Violation> {
-    let cfg = test_config();
-    let lines: Vec<&str> = source.lines().collect();
-    let ctx = FileCtx {
-        rel: "test.rs",
-        path: Path::new("test.rs"),
-        package_name: None,
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-
-    check(&ctx)
-}
-
-pub(crate) fn check_source_ast(
-    source: &str,
-    check: fn(&AstCtx<'_>) -> Vec<Violation>,
-) -> Vec<Violation> {
-    check_source_ast_at("test.rs", source, check)
-}
-
-fn apply_fixes_to_source(source: &str, mut fixes: Vec<Fix>) -> String {
-    fixes.sort_by_key(|b| std::cmp::Reverse(b.start_line));
-    let mut lines_owned: Vec<String> = source.lines().map(String::from).collect();
-
-    for f in fixes {
-        let start = f.start_line.saturating_sub(1);
-        let end = f.end_line.min(lines_owned.len());
-
-        if start >= lines_owned.len() || start >= end {
-            continue;
-        }
-
-        if f.replacement.is_empty() {
-            lines_owned.drain(start..end);
-        } else {
-            let new: Vec<String> = f.replacement.lines().map(String::from).collect();
-
-            lines_owned.splice(start..end, new);
-        }
-    }
-
-    lines_owned.join("\n")
-}
-
-pub(crate) fn apply_line_fixes(
-    source: &str,
-    check: fn(&FileCtx<'_>) -> Vec<Violation>,
-    fix_fn: fn(&FileCtx<'_>, &Violation) -> Option<Fix>,
-) -> String {
-    let cfg = test_config();
-    let lines: Vec<&str> = source.lines().collect();
-    let ctx = FileCtx {
-        rel: "test.rs",
-        path: Path::new("test.rs"),
-        package_name: None,
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-    let violations = check(&ctx);
-    let fixes: Vec<Fix> = violations.iter().filter_map(|v| fix_fn(&ctx, v)).collect();
-
-    apply_fixes_to_source(source, fixes)
-}
-
-pub(crate) fn apply_ast_fixes(
-    source: &str,
-    check: fn(&AstCtx<'_>) -> Vec<Violation>,
-    fix_fn: fn(&AstCtx<'_>, &Violation) -> Option<Fix>,
-) -> String {
-    let cfg = test_config();
-    let lines: Vec<&str> = source.lines().collect();
-    let file_ctx = FileCtx {
-        rel: "test.rs",
-        path: Path::new("test.rs"),
-        package_name: None,
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-    let ra_parse = SourceFile::parse(source, Edition::Edition2024);
-
-    assert!(ra_parse.errors().is_empty(), "test source must parse");
-    let root = ra_parse.tree();
-    let line_index = LineIndex::new(source);
-    let ast_ctx = AstCtx {
-        file: &file_ctx,
-        root: &root,
-        line_index: &line_index,
-        test_only_file: false,
-    };
-    let violations = check(&ast_ctx);
-    let fixes: Vec<Fix> = violations
-        .iter()
-        .filter_map(|v| fix_fn(&ast_ctx, v))
-        .collect();
-
-    apply_fixes_to_source(source, fixes)
-}
-
-pub(crate) fn apply_ast_tree_fix(
-    source: &str,
-    check: fn(&AstCtx<'_>) -> Vec<Violation>,
-    fix_fn: fn(&AstCtx<'_>, &[Violation]) -> Option<String>,
-) -> String {
-    let cfg = test_config();
-    let lines: Vec<&str> = source.lines().collect();
-    let file_ctx = FileCtx {
-        rel: "test.rs",
-        path: Path::new("test.rs"),
-        package_name: None,
-        lines: &lines,
-        contents: source,
-        config: &cfg,
-    };
-    let ra_parse = SourceFile::parse(source, Edition::Edition2024);
-
-    assert!(ra_parse.errors().is_empty(), "test source must parse");
-    let root = ra_parse.tree();
-    let line_index = LineIndex::new(source);
-    let ast_ctx = AstCtx {
-        file: &file_ctx,
-        root: &root,
-        line_index: &line_index,
-        test_only_file: false,
-    };
-    let violations = check(&ast_ctx);
-
-    fix_fn(&ast_ctx, &violations).unwrap_or_else(|| source.to_owned())
+    cfg
 }

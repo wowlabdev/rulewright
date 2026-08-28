@@ -1,4 +1,4 @@
-use ra_ap_syntax::{AstNode, ast, ast::HasArgList};
+use ra_ap_syntax::{AstNode, ast, ast::HasArgList, ast::HasGenericArgs};
 
 use crate::{AstCtx, Example, Violation};
 
@@ -7,17 +7,32 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "bare variant path",
         code: "fn f(r: Result<u8, IoError>) -> Result<u8, AppError> { r.map_err(AppError::Io) }",
+        pass: true,
+    },
+    Example {
+        label: "explicit conversion immediately propagated",
+        code: "fn f(r: Result<u8, IoError>) -> Result<(), AppError> { let _ = r.map_err(<AppError as From<IoError>>::from)?; Ok(()) }",
         pass: false,
     },
     Example {
-        label: "bare from path",
+        label: "inherent conversion does not prove the propagation conversion",
+        code: "fn f(r: Result<u8, A>) -> Result<(), C> { let _ = r.map_err(B::from)?; Ok(()) }",
+        pass: true,
+    },
+    Example {
+        label: "mapped result retained as a value",
+        code: "fn f(r: Result<u8, IoError>) -> bool { let normalized = r.map_err(AppError::from); normalized.is_ok() }",
+        pass: true,
+    },
+    Example {
+        label: "mapped result returned without immediate propagation",
         code: "fn f(r: Result<u8, IoError>) -> Result<u8, AppError> { r.map_err(AppError::from) }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "closure wrapping only the error",
         code: "fn f(r: Result<u8, IoError>) -> Result<u8, AppError> { r.map_err(|e| AppError::Io(e)) }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "closure adding context arguments",
@@ -54,18 +69,23 @@ const EXAMPLES: &[Example] = &[
         code: "#[cfg(test)]\nmod tests {\n    fn f(r: Result<u8, IoError>) -> Result<u8, AppError> { r.map_err(AppError::Io) }\n}",
         pass: true,
     },
+    Example {
+        label: "trait implementation controls the error type",
+        code: "struct Decoder;\nimpl Decode for Decoder { fn decode(r: Result<u8, SourceError>) -> Result<u8, D::Error> { r.map_err(D::Error::custom) } }",
+        pass: true,
+    },
 ];
 
 crate::ast_rule!(
     map_err_pure_wrap,
-    "Flag `.map_err(...)` that only wraps the error in another type — implement `From` and let `?` convert.",
-    "Context-free error wrapping repeated at every call site obscures the happy path; a single From impl gives the conversion to every ? for free.",
+    "Flag `.map_err(Type::from)` when `?` can already perform the same declared conversion.",
+    "Repeating an existing From conversion obscures the happy path; use ? and let the declared conversion run automatically. Enum variants are not flagged because orphan rules or distinct semantic context may make a From impl invalid.",
     Low,
 );
 
 fn check_map_err_pure_wrap(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::MethodCallExpr>()
-        .filter(|call| !ctx.is_in_test(call))
+        .filter(|call| !ctx.is_in_test(call) && !is_in_trait_impl(call))
         .filter_map(|call| {
             let method = call.name_ref()?;
 
@@ -77,69 +97,80 @@ fn check_map_err_pure_wrap(ctx: &AstCtx<'_>) -> Vec<Violation> {
             let mut args = args.args();
             let arg = args.next()?;
 
-            (args.next().is_none() && is_pure_wrap(&arg)).then(|| {
+            (args.next().is_none() && is_redundant_propagated_from(&call, &arg)).then(|| {
                 ctx.violation(
                     &method,
-                    ".map_err() wraps the error without adding context — implement `From` and use `?`",
+                    ".map_err(Type::from) repeats a declared conversion — use `?`",
                 )
             })
         })
         .collect()
 }
 
-fn is_pure_wrap(arg: &ast::Expr) -> bool {
-    match arg {
-        ast::Expr::PathExpr(path) => path.path().is_some_and(|path| is_ctor_like_path(&path)),
-        ast::Expr::ClosureExpr(closure) => closure_pure_wraps(closure),
-        _ => false,
-    }
-}
-
-fn is_ctor_like_path(path: &ast::Path) -> bool {
-    if path.qualifier().is_some() {
-        return true;
-    }
-
-    path.segment()
-        .and_then(|seg| seg.name_ref())
-        .is_some_and(|name| name.text().chars().next().is_some_and(char::is_uppercase))
-}
-
-fn closure_pure_wraps(closure: &ast::ClosureExpr) -> bool {
-    let normalized: String = closure
+fn is_redundant_propagated_from(call: &ast::MethodCallExpr, argument: &ast::Expr) -> bool {
+    let immediately_propagated = call
         .syntax()
-        .text()
+        .parent()
+        .and_then(ast::TryExpr::cast)
+        .is_some();
+    let Some(target) = qualified_from_target(argument) else {
+        return false;
+    };
+
+    immediately_propagated && enclosing_result_error(call).is_some_and(|error| error == target)
+}
+
+fn is_in_trait_impl(call: &ast::MethodCallExpr) -> bool {
+    call.syntax()
+        .ancestors()
+        .find_map(ast::Impl::cast)
+        .is_some_and(|item| item.trait_().is_some())
+}
+
+fn qualified_from_target(argument: &ast::Expr) -> Option<String> {
+    let ast::Expr::PathExpr(_) = argument else {
+        return None;
+    };
+    let compact = compact_type_syntax(argument.syntax());
+    let qualified = compact.strip_prefix('<')?;
+    let (target, conversion) = qualified.split_once("asFrom<")?;
+
+    conversion.ends_with(">>::from").then(|| target.to_owned())
+}
+
+fn enclosing_result_error(call: &ast::MethodCallExpr) -> Option<String> {
+    let function = call
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .take_while(|ancestor| !ast::ClosureExpr::can_cast(ancestor.kind()))
+        .find_map(ast::Fn::cast)?;
+    let ast::Type::PathType(result) = function.ret_type()?.ty()? else {
+        return None;
+    };
+    let segment = result.path()?.segment()?;
+
+    if segment.name_ref()?.text() != "Result" {
+        return None;
+    }
+
+    segment
+        .generic_arg_list()?
+        .generic_args()
+        .nth(1)
+        .and_then(|argument| match argument {
+            ast::GenericArg::TypeArg(argument) => argument.ty(),
+            _ => None,
+        })
+        .map(|ty| compact_type_syntax(ty.syntax()))
+}
+
+fn compact_type_syntax(node: &ra_ap_syntax::SyntaxNode) -> String {
+    node.text()
         .to_string()
         .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect();
-    let Some(rest) = normalized.strip_prefix('|') else {
-        return false;
-    };
-    let Some((binding, body)) = rest.split_once('|') else {
-        return false;
-    };
-
-    if binding.is_empty() || binding == "_" || binding.contains(',') {
-        return false;
-    }
-
-    let body = body
-        .strip_prefix('{')
-        .and_then(|body| body.strip_suffix('}'))
-        .unwrap_or(body);
-    let Some(open) = body.find('(') else {
-        return false;
-    };
-    let Some(argument) = body.get(open + 1..body.len().saturating_sub(1)) else {
-        return false;
-    };
-
-    body.ends_with(')')
-        && argument == binding
-        && body
-            .get(..open)
-            .is_some_and(|constructor| !constructor.is_empty())
+        .filter(|character| !character.is_whitespace())
+        .collect()
 }
 
 crate::rulewright_ast_test!(check_map_err_pure_wrap, {

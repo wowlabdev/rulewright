@@ -24,7 +24,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     transmute_usage,
     "Require `SAFETY` comment on `std::mem::transmute` calls.",
-    "transmute reinterprets raw bytes and can cause UB if the types are incompatible. A SAFETY comment proves correctness.",
+    "transmute can violate size, validity, provenance, and lifetime rules. Prefer a checked conversion or dedicated pointer API; if transmute is necessary, document the exact invariants that make the source and destination representations valid.",
     High,
 );
 

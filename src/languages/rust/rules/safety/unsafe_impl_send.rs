@@ -108,6 +108,7 @@ fn skip_generics(s: &str) -> Option<&str> {
     for (i, ch) in s.char_indices() {
         match ch {
             '<' => depth += 1,
+
             '>' => {
                 depth = depth.checked_sub(1)?;
 
@@ -115,6 +116,7 @@ fn skip_generics(s: &str) -> Option<&str> {
                     return s.get(i + 1..).map(str::trim_start);
                 }
             }
+
             _ => {}
         }
     }

@@ -104,6 +104,7 @@ fn unwrap_expr(mut expr: ast::Expr) -> ast::Expr {
 
                 expr = nested;
             }
+
             ast::Expr::RefExpr(inner) => {
                 let Some(nested) = inner.expr() else {
                     return ast::Expr::RefExpr(inner);
@@ -111,6 +112,7 @@ fn unwrap_expr(mut expr: ast::Expr) -> ast::Expr {
 
                 expr = nested;
             }
+
             ast::Expr::PrefixExpr(inner) if inner.op_kind() == Some(UnaryOp::Neg) => {
                 let Some(nested) = inner.expr() else {
                     return ast::Expr::PrefixExpr(inner);
@@ -118,6 +120,7 @@ fn unwrap_expr(mut expr: ast::Expr) -> ast::Expr {
 
                 expr = nested;
             }
+
             _ => return expr,
         }
     }
@@ -130,6 +133,7 @@ fn is_literal_expr(expr: ast::Expr) -> bool {
 fn classify(expr: ast::Expr) -> ArgKind {
     match unwrap_expr(expr) {
         ast::Expr::Literal(literal) if is_plain_literal(&literal) => ArgKind::Literal,
+
         ast::Expr::ArrayExpr(array)
             if array.semicolon_token().is_none()
                 && array
@@ -140,7 +144,9 @@ fn classify(expr: ast::Expr) -> ArgKind {
         {
             ArgKind::Literal
         }
+
         ast::Expr::TupleExpr(tuple) if tuple.fields().all(is_literal_expr) => ArgKind::Literal,
+
         ast::Expr::PathExpr(path) => {
             let name = path
                 .path()
@@ -155,6 +161,7 @@ fn classify(expr: ast::Expr) -> ArgKind {
                 }
             })
         }
+
         _ => ArgKind::Other,
     }
 }

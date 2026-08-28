@@ -88,6 +88,7 @@ fn consume(text: &str, depth: &mut usize, content: &mut String) -> bool {
     for ch in text.chars() {
         match ch {
             '(' => *depth += 1,
+
             ')' => {
                 *depth -= 1;
 
@@ -95,6 +96,7 @@ fn consume(text: &str, depth: &mut usize, content: &mut String) -> bool {
                     return true;
                 }
             }
+
             _ => {}
         }
 

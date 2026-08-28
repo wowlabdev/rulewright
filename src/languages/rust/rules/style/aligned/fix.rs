@@ -168,7 +168,6 @@ fn containing_block<'a>(
     })
 }
 
-// #rw(fn: rust_unchecked_indexing) block indices originate from the same bounded replacement range
 fn align_arrows(block: &[(usize, &str)], start: usize, replacement: &mut [String]) {
     let target = block
         .iter()
@@ -185,8 +184,7 @@ fn align_arrows(block: &[(usize, &str)], start: usize, replacement: &mut [String
     }
 }
 
-// #rw(fn: rust_alloc_in_loop, rust_collection_new_in_loop) each row needs an independently rebuilt aligned representation
-// #rw(fn: rust_unchecked_indexing) row and column indices are derived from validated equal-width segment tables
+// #rw(fn: rust_collection_new_in_loop) each row needs an independently rebuilt aligned representation
 fn align_commas(block: &[(usize, &str)], start: usize, replacement: &mut [String]) -> Option<()> {
     let segments: Vec<Vec<&str>> = block
         .iter()
@@ -247,7 +245,6 @@ fn align_commas(block: &[(usize, &str)], start: usize, replacement: &mut [String
     Some(())
 }
 
-// #rw(fn: rust_alloc_in_loop) each commented row needs an independently rebuilt aligned representation
 fn align_comments(block: &[(usize, &str)], start: usize, replacement: &mut [String]) {
     let commented: Vec<(usize, usize)> = block
         .iter()
@@ -292,7 +289,6 @@ fn align_comments(block: &[(usize, &str)], start: usize, replacement: &mut [Stri
     }
 }
 
-// #rw(fn: rust_unchecked_indexing) scanner positions are valid UTF-8 byte boundaries within the source line
 fn split_at_commas(line: &str) -> Vec<&str> {
     let mut segments = Vec::new();
     let mut start = 0;

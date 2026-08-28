@@ -119,7 +119,6 @@ fn check_siblings(ctx: &AstCtx<'_>, scope: &SyntaxNode, out: &mut Vec<Violation>
     }
 }
 
-// #rw(fn: rust_alloc_in_loop) sibling module names are owned map keys.
 fn public_mod_names(items: &[ast::Item]) -> HashSet<String> {
     let mut names = HashSet::default();
 

@@ -11,14 +11,25 @@ fn analyze_selected(source: &str, selected: &[&str], fix_mode: bool) -> Analysis
             .map(|rule| (rule.name, rule.params))
             .collect::<Vec<_>>(),
     );
+
+    analyze_selected_with_config(source, selected, fix_mode, &config)
+}
+
+fn analyze_selected_with_config(
+    source: &str,
+    selected: &[&str],
+    fix_mode: bool,
+    config: &Config,
+) -> Analysis {
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
         rel: "dispatch.rs",
         path: Path::new("dispatch.rs"),
         package_name: None,
+        package_publishable: None,
         lines: &lines,
         contents: source,
-        config: &config,
+        config,
     };
     let rules: Vec<&Rule> = inventory::iter::<Rule>
         .into_iter()
@@ -30,6 +41,38 @@ fn analyze_selected(source: &str, selected: &[&str], fix_mode: bool) -> Analysis
         .collect();
 
     analyze(&file, &rules, &registered, fix_mode, FileKind::Production)
+}
+
+#[gtest]
+fn disabled_suppressions_are_reported_before_they_can_skip_a_rule() -> Result<()> {
+    let metadata = crate::all_rules();
+    let config = Config::generate_default(
+        &metadata
+            .iter()
+            .map(|rule| (rule.name, rule.params))
+            .collect::<Vec<_>>(),
+    )
+    .with_suppressions_allowed(false);
+    let source = "// #rw(file: rust_panic) attempted bypass\n\nfn fail() { panic!(); }";
+    let analysis = analyze_selected_with_config(source, &["rust_panic"], false, &config);
+
+    verify_that!(
+        analysis
+            .violations
+            .iter()
+            .filter(|violation| violation.rule == Some("rust_rulewright_directives"))
+            .count(),
+        eq(1)
+    )?;
+
+    verify_that!(
+        analysis
+            .violations
+            .iter()
+            .filter(|violation| violation.rule == Some("rust_panic"))
+            .count(),
+        eq(1)
+    )
 }
 
 #[gtest]
@@ -171,6 +214,7 @@ fn production() {}
         rel: "classification.rs",
         path: Path::new("classification.rs"),
         package_name: None,
+        package_publishable: None,
         lines: &lines,
         contents: &source,
         config: &config,
@@ -181,12 +225,7 @@ fn production() {}
 
     let root = parse.tree();
     let line_index = LineIndex::new(&source);
-    let ctx = AstCtx {
-        file: &file,
-        root: &root,
-        line_index: &line_index,
-        test_only_file: false,
-    };
+    let ctx = AstCtx::new(&file, &root, &line_index, false);
     let classification: BTreeMap<String, bool> = ctx
         .nodes::<ast::Fn>()
         .filter_map(|function| {

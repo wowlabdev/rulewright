@@ -36,7 +36,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     multiple_inherent_impl,
     "Flag multiple `impl Foo` blocks for the same type in one file.",
-    "Split impl blocks for the same type scatter related methods. Keep them in one block for discoverability.",
+    "Split impl blocks for the same type can scatter related methods. Merge blocks that form one readable API inventory; suppress the rule when cfg boundaries, generated code, or a deliberate large-module organization makes separation clearer.",
 );
 
 fn check_multiple_inherent_impl(ctx: &AstCtx<'_>) -> Vec<Violation> {

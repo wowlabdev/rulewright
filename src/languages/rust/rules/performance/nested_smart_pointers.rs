@@ -90,17 +90,21 @@ fn nested_message(path: &ast::Path) -> Option<String> {
 
     match (outer_name.as_str(), inner.as_str()) {
         ("Box", "Box" | "String" | "Vec") => None,
+
         (_, "Arc" | "Box" | "Rc") => Some(format!(
             "`{outer_name}<{inner}<..>>` stacks two heap indirections — flatten to a single allocation"
         )),
+
         ("Arc", "Vec") => Some(
             "`Arc<Vec<T>>` — prefer `Arc<[T]>` (one indirection less, no capacity word)"
                 .to_string(),
         ),
+
         ("Arc", "String") => Some(
             "`Arc<String>` — prefer `Arc<str>` (one indirection less, no capacity word)"
                 .to_string(),
         ),
+
         _ => None,
     }
 }

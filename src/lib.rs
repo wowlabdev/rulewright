@@ -22,6 +22,9 @@ mod registry;
 pub mod runner;
 #[cfg(test)]
 mod temporary;
+/// Fixture harness for downstream rule packs.
+#[cfg(any(test, feature = "rule-pack-testing"))]
+pub mod testing;
 mod walk;
 mod working_directory;
 
@@ -47,18 +50,22 @@ pub use registry::{
 };
 #[cfg(test)]
 pub(crate) use test_support::{
-    apply_ast_fixes, apply_ast_tree_fix, apply_line_fixes, check_source, check_source_ast,
-    check_source_toml, check_workspace_sources,
+    apply_ast_fixes, apply_ast_tree_fix, apply_line_fixes, check_workspace_sources,
 };
 
 #[cfg(test)]
 mod test_support;
 
 /// Test-only third-party exports used by the rule harness macros.
-#[cfg(test)]
+#[cfg(any(test, feature = "rule-pack-testing"))]
 #[doc(hidden)]
 pub mod _private {
     pub use googletest::{gtest, scoped_trace, verify_false, verify_true};
 
     pub type TestResult<T = ()> = googletest::Result<T>;
 }
+
+#[doc(hidden)]
+pub use inventory as __inventory;
+#[doc(hidden)]
+pub use paste as __paste;

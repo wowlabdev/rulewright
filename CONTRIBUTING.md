@@ -16,10 +16,10 @@ Before submitting a change, run:
 
 ```console
 cargo fmt --all -- --check
-cargo check --workspace --all-targets --locked
-cargo test --workspace --all-targets --locked
-cargo clippy --workspace --all-targets --locked -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
+cargo check --workspace --all-targets --all-features --locked
+cargo test --workspace --all-targets --all-features --locked
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --locked
 cargo run --locked -- --strict
 cargo test --manifest-path examples/custom-rule-pack/Cargo.toml
 ```

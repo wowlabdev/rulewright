@@ -66,8 +66,8 @@ pub(crate) fn git_dirty_paths(
     for item in iter {
         let item = match item {
             Ok(item) => item,
+
             Err(error) => {
-                // #rw(rust_alloc_in_loop) preserve each independent traversal failure for one diagnostic
                 failures.push(error.to_string());
                 continue;
             }
@@ -120,7 +120,6 @@ pub(crate) fn git_dirty_paths(
             }
         }
 
-        // #rw(rust_clone_in_loop) need one copy in seen and one in paths
         if seen.insert(abs.clone()) {
             paths.push(abs);
         }

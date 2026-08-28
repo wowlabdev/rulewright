@@ -34,7 +34,6 @@ crate::ast_rule!(
     Low,
 );
 
-// #rw(fn: rust_alloc_in_loop) normalized self-type keys are owned by the cross-impl index
 fn check_inherent_before_trait_impl(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let mut first_inherent = HashMap::<String, usize>::default();
     let mut trait_impls = Vec::new();

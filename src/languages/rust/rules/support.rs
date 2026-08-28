@@ -1,7 +1,27 @@
 use ra_ap_syntax::{
-    AstNode, Edition, SourceFile, SyntaxElement,
+    AstNode, Edition, SourceFile, SyntaxElement, SyntaxNode,
     ast::{self, HasModuleItem, LiteralKind},
 };
+
+pub(super) fn compact_syntax(node: &SyntaxNode) -> String {
+    node.descendants_with_tokens()
+        .filter_map(ra_ap_syntax::NodeOrToken::into_token)
+        .filter(|token| !token.kind().is_trivia())
+        .fold(String::new(), |mut source, token| {
+            source.push_str(token.text());
+
+            source
+        })
+}
+
+pub(super) fn is_in_const_or_static<N>(node: &N) -> bool
+where
+    N: AstNode,
+{
+    node.syntax().ancestors().any(|ancestor| {
+        ast::Const::can_cast(ancestor.kind()) || ast::Static::can_cast(ancestor.kind())
+    })
+}
 
 pub(super) fn macro_arguments(call: &ast::MacroCall) -> Option<Vec<String>> {
     let tree = call.token_tree()?;
@@ -22,42 +42,6 @@ pub(super) fn macro_arguments(call: &ast::MacroCall) -> Option<Vec<String>> {
     }
 
     Some(arguments)
-}
-
-pub(super) fn binary_macro_argument_candidates(
-    call: &ast::MacroCall,
-) -> Option<Vec<(String, String)>> {
-    let tree = call.token_tree()?;
-    let mut elements: Vec<SyntaxElement> = tree.syntax().children_with_tokens().collect();
-
-    elements.first()?.as_token()?;
-    elements.last()?.as_token()?;
-    elements.remove(0);
-    elements.pop();
-
-    Some(
-        elements
-            .iter()
-            .enumerate()
-            .filter(|(_, element)| element.as_token().is_some_and(|token| token.text() == ","))
-            .map(|(separator, _)| {
-                let left = elements
-                    .get(..separator)
-                    .unwrap_or_default()
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect();
-                let right = elements
-                    .get(separator + 1..)
-                    .unwrap_or_default()
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect();
-
-                (left, right)
-            })
-            .collect(),
-    )
 }
 
 const ONE_BYTE: u64 = 1;
@@ -124,7 +108,6 @@ pub(super) fn path_names(path: &ast::Path) -> Vec<String> {
 
     while let Some(path) = current {
         if let Some(name) = path.segment().and_then(|segment| segment.name_ref()) {
-            // #rw(rust_alloc_in_loop) collected path segments must outlive the temporary syntax node
             names.push(name.text().to_string());
         }
 
@@ -140,16 +123,20 @@ pub(super) fn path_names(path: &ast::Path) -> Vec<String> {
 pub(super) fn estimate_type_size(ty: &ast::Type) -> Option<u64> {
     match ty {
         ast::Type::PathType(path) => estimate_path_size(path),
+
         ast::Type::ArrayType(array) => {
             let element = estimate_type_size(&array.ty()?)?;
             let length = parse_int_expr(&array.const_arg()?.expr()?)?;
 
             Some(element.saturating_mul(length))
         }
+
         ast::Type::TupleType(tuple) => tuple.fields().try_fold(0u64, |total, element| {
             Some(total.saturating_add(estimate_type_size(&element)?))
         }),
+
         ast::Type::RefType(_) | ast::Type::PtrType(_) => Some(EIGHT_BYTES),
+
         _ => None,
     }
 }

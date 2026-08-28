@@ -1,4 +1,3 @@
-// #rw(file: rust_alloc_in_loop) markdown document builder uses format! throughout loops by design
 // #rw(file: rust_println) --llm CLI output writes the document to stdout by design
 // #rw(file: rust_vec_string_field) rule-info structs are built then immediately rendered; boxing buys nothing
 
@@ -154,6 +153,7 @@ fn render_rule_details(mut doc: Doc, rules: &[LlmRuleInfo]) -> Doc {
     doc
 }
 
+// #rw(fn: rust_closure_dense_method_chain) this Doc builder chain renders one coherent guide section
 fn render_alignment_guide(doc: Doc) -> Doc {
     doc.h2("Alignment guide")
         .blank()
@@ -188,7 +188,7 @@ fn render_finding_guide(doc: Doc) -> Doc {
         .blank()
 }
 
-fn render_violations(mut doc: Doc, violations: &[Violation]) -> Doc {
+fn render_violations(mut doc: Doc, violations: &[Violation], rules: &[LlmRuleInfo]) -> Doc {
     if violations.is_empty() {
         return doc.line("No violations found.").blank();
     }
@@ -208,6 +208,14 @@ fn render_violations(mut doc: Doc, violations: &[Violation]) -> Doc {
 
     for (rule, vs) in &by_rule {
         doc = doc.h3(&format!("{rule} ({} issues)", vs.len())).blank();
+
+        if let Some(info) = rules.iter().find(|info| info.name == *rule) {
+            doc = doc
+                .line(info.description)
+                .blank()
+                .quote(info.justification)
+                .blank();
+        }
 
         for v in vs {
             let loc = format!("{}:{}", v.rel, v.line);
@@ -291,6 +299,7 @@ pub fn print(ctx: &runner::RunCtx<'_>) -> ExitCode {
     doc = doc.h2("Current violations").blank();
     let violations = match runner::collect_violations(ctx, false, None) {
         Ok((violations, _, _, _)) => violations,
+
         Err(error) => {
             eprintln!("rulewright: analysis aborted: {error}");
 
@@ -298,7 +307,7 @@ pub fn print(ctx: &runner::RunCtx<'_>) -> ExitCode {
         }
     };
 
-    doc = render_violations(doc, &violations);
+    doc = render_violations(doc, &violations, &rules);
 
     print!("{}", doc.build());
 

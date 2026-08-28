@@ -35,6 +35,36 @@ fn generated_config_matches_registry_defaults() {
 }
 
 #[test]
+fn strict_parse_config_rejects_the_same_invalid_params_as_analysis() {
+    let temporary = tempfile::tempdir().expect("temporary project should be created");
+    let root = temporary.path();
+
+    root_package(root, "invalid-params", "pub fn clean() {}\n");
+    initialize(root);
+    let config_path = root.join("rulewright.toml");
+    let config = fs::read_to_string(&config_path)
+        .expect("generated configuration should be readable")
+        .replace("chain_threshold = 12", "obsolete_threshold = 12");
+
+    write(&config_path, &config);
+
+    let parsed = run(
+        root,
+        &[
+            "--strict",
+            "--parse-config",
+            config_path.to_str().expect("UTF-8 fixture path"),
+        ],
+    );
+    let analyzed = run(root, &["--strict"]);
+
+    assert!(!parsed.status.success());
+    assert!(!analyzed.status.success());
+    assert!(text(&parsed).contains("obsolete_threshold"));
+    assert!(text(&parsed).contains("chain_threshold"));
+}
+
+#[test]
 fn root_package_is_discovered_from_a_descendant() {
     let temporary = tempfile::tempdir().expect("temporary project should be created");
     let root = temporary.path();
@@ -72,14 +102,55 @@ fn json_findings_include_stable_locations_and_rule_metadata() {
         serde_json::from_slice(&output.stdout).expect("findings output should be JSON");
     let finding = &document["findings"][0];
 
-    assert_eq!(document["schema_version"], 1);
+    assert_eq!(document["schema_version"], 2);
     assert_eq!(finding["path"], "src/lib.rs");
     assert_eq!(finding["line"], 1);
     assert!(finding["column"].as_u64().is_some_and(|column| column > 1));
     assert_eq!(finding["rule"], "rust_dbg");
     assert_eq!(finding["severity"], "medium");
     assert_eq!(finding["fixable"], true);
+    assert_eq!(
+        finding["description"],
+        "Ban `dbg!()` macro calls in production code."
+    );
+    assert!(
+        finding["guidance"]
+            .as_str()
+            .is_some_and(|guidance| guidance.contains("temporary debugging"))
+    );
     assert_eq!(finding["id"].as_str().map(str::len), Some(64));
+}
+
+#[test]
+fn json_fixability_reflects_the_specific_finding() {
+    let temporary = tempfile::tempdir().expect("temporary project should be created");
+    let root = temporary.path();
+    let source = r"pub fn probe() {
+    let _ = [
+        // #rw:aligned
+        (
+            SHORT,
+            build_value(),
+        ),
+        (LONG_NAME, VALUE),
+    ];
+}
+";
+
+    root_package(root, "json-fixability", source);
+    initialize(root);
+    let output = run(
+        root,
+        &["check", "--rule", "rust_aligned", "--format", "json"],
+    );
+
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty(), "{}", text(&output));
+    let document: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("findings output should be JSON");
+
+    assert_eq!(document["findings"][0]["rule"], "rust_aligned");
+    assert_eq!(document["findings"][0]["fixable"], false);
 }
 
 #[test]
@@ -338,6 +409,27 @@ fn llm_explains_how_to_use_alignment_regions() {
     assert!(output_text.contains("reported without an automatic rewrite"));
     assert!(output_text.contains("## How to use findings"));
     assert!(output_text.contains("Do not hide a finding behind an identity macro"));
+}
+
+#[test]
+fn llm_repeats_rule_guidance_beside_current_findings() {
+    let temporary = tempfile::tempdir().expect("temporary project should be created");
+    let root = temporary.path();
+
+    root_package(root, "finding-guidance", "pub fn probe() { dbg!(1); }\n");
+    initialize(root);
+
+    let output = run(root, &["--llm", "--rule", "rust_dbg"]);
+    let output_text = text(&output);
+    let findings = output_text
+        .split_once("## Current violations")
+        .map(|(_, findings)| findings)
+        .expect("LLM output should contain current findings");
+
+    assert!(output.status.success(), "{output_text}");
+    assert!(findings.contains("### rust_dbg (1 issues)"));
+    assert!(findings.contains("Ban `dbg!()` macro calls in production code."));
+    assert!(findings.contains("temporary debugging"));
 }
 
 #[test]

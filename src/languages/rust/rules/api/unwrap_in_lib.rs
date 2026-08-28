@@ -24,7 +24,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     unwrap_in_lib,
     "Ban `.unwrap()` in library code.",
-    "unwrap() in library code panics the caller with no context. Return Result or use expect() with a message.",
+    "unwrap() in library code panics the caller with no context. Propagate a real error when failure is possible; use expect() only for a locally established invariant and state that invariant in the message.",
     Medium,
 );
 

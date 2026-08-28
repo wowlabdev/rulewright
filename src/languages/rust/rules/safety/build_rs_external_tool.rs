@@ -65,7 +65,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     build_rs_external_tool,
     "Flag build.rs usage of external tools, hard-required env vars, and build-time binding generation.",
-    "Builds must work out of the box with cargo and rustc alone — external tools and required env vars break every downstream consumer.",
+    "Published crates should build with Cargo and rustc alone. Check generated artifacts in, use a Rust build dependency, or make optional integration explicit; do not make every downstream build depend on an undeclared executable or environment variable.",
     Medium,
 );
 

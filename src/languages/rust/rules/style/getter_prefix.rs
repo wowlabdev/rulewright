@@ -1,4 +1,7 @@
-use ra_ap_syntax::ast::{self, HasName};
+use ra_ap_syntax::{
+    AstNode,
+    ast::{self, HasName},
+};
 
 use crate::{AstCtx, Example, Violation};
 
@@ -45,6 +48,26 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
+        label: "keyed lookup method",
+        code: "struct S;\nimpl S {\n    fn get_name(&self, id: u32) -> &str { todo!() }\n}",
+        pass: true,
+    },
+    Example {
+        label: "builder setter",
+        code: "struct S;\nimpl S {\n    fn get_name(self, callback: impl Fn()) -> Self { self }\n}",
+        pass: true,
+    },
+    Example {
+        label: "async retrieval method",
+        code: "struct S;\nimpl S {\n    async fn get_name(&self) -> String { todo!() }\n}",
+        pass: true,
+    },
+    Example {
+        label: "trait implementation method",
+        code: "struct S;\nimpl External for S {\n    fn get_name(&self) -> &str { \"name\" }\n}",
+        pass: true,
+    },
+    Example {
         label: "getter in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct S;\n    impl S {\n        fn get_name(&self) {}\n    }\n}",
         pass: true,
@@ -53,8 +76,8 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     getter_prefix,
-    "Flag methods named `get_something` — Rust getters are named after the field (C-GETTER).",
-    "The `get_` prefix is noise: the std convention is `fn name(&self)`, with `get`/`get_mut` reserved for keyed or checked access.",
+    "Flag receiver-only accessor methods named `get_something` — Rust getters are named after the field (C-GETTER).",
+    "The `get_` prefix is noise on a zero-argument accessor: the std convention is `fn name(&self)`. Methods that accept a key, query, callback, or other argument are operations rather than simple getters and are left alone.",
     Low,
 );
 
@@ -71,9 +94,11 @@ fn check_getter_prefix(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Fn>()
         .filter(|function| {
             !ctx.is_in_test(function)
-                && function
-                    .param_list()
-                    .is_some_and(|params| params.self_param().is_some())
+                && function.async_token().is_none()
+                && !is_trait_impl_method(function)
+                && function.param_list().is_some_and(|params| {
+                    params.self_param().is_some() && params.params().next().is_none()
+                })
         })
         .filter_map(|function| {
             let name = function.name()?;
@@ -90,6 +115,14 @@ fn check_getter_prefix(ctx: &AstCtx<'_>) -> Vec<Violation> {
             })
         })
         .collect()
+}
+
+fn is_trait_impl_method(function: &ast::Fn) -> bool {
+    function
+        .syntax()
+        .ancestors()
+        .find_map(ast::Impl::cast)
+        .is_some_and(|item_impl| item_impl.trait_().is_some())
 }
 
 crate::rulewright_ast_test!(check_getter_prefix, {

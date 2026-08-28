@@ -55,14 +55,14 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | ---------------------------------- | -------- | -------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | rust_abs_home_path                 | medium   | rust-line      | yes     | no      | Ban hardcoded home directory paths like `/Users/` or `/home/` in string literals.                                                                                               |
 | rust_aligned                       | low      | rust-line      | yes     | yes     | Enforce column alignment in regions marked with `// #rw:aligned`.                                                                                                               |
-| rust_alloc_in_loop                 | medium   | rust-ast       | no      | no      | Flag `format!()` and `.to_string()` inside loops.                                                                                                                               |
+| rust_alloc_in_loop                 | medium   | rust-ast       | no      | no      | Flag loop-invariant `format!()` and `.to_string()` work repeated inside loops.                                                                                                  |
 | rust_allow_reason                  | low      | rust-line      | yes     | no      | Require a `reason = "..."` or comment explaining why `#[allow(...)]`/`#[expect(...)]` is used.                                                                                  |
 | rust_ambient_syscall               | medium   | rust-ast       | no      | no      | Flag ambient I/O, clock, env, and entropy calls in library code.                                                                                                                |
 | rust_ambiguous_unicode             | high     | rust-line      | yes     | no      | Ban Unicode characters visually confusable with ASCII (homoglyphs).                                                                                                             |
 | rust_asref_bound_on_type           | low      | rust-ast       | yes     | no      | Flag struct/enum generic parameters bounded by `AsRef<…>` and stored in fields.                                                                                                 |
 | rust_assert_side_effects           | high     | rust-ast       | yes     | no      | Ban compound assignments (`+=`, `-=`) inside `debug_assert!` macros.                                                                                                            |
 | rust_assoc_fn_no_self              | low      | rust-ast       | yes     | no      | Flag inherent associated fns that neither take nor return the impl type — make them free functions.                                                                             |
-| rust_async_loop_no_yield           | low      | rust-ast       | yes     | no      | Flag loops in async contexts whose bodies never `.await` (CPU-bound work without yield points).                                                                                 |
+| rust_async_loop_no_yield           | low      | rust-ast       | yes     | no      | Flag potentially unbounded `loop`/`while` work in async contexts whose bodies never `.await`.                                                                                   |
 | rust_attr_order                    | low      | rust-ast       | yes     | yes     | Require item attributes to be ordered as docs, derives, then other attributes.                                                                                                  |
 | rust_banner_comments               | low      | rust-line      | yes     | yes     | Disallow decorative separator and framed banner comments.                                                                                                                       |
 | rust_bidirectional_unicode         | high     | rust-line      | yes     | no      | Ban Unicode bidi control characters that enable trojan-source attacks.                                                                                                          |
@@ -70,26 +70,23 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_box_leak                      | high     | rust-line      | yes     | no      | Require `SAFETY` or `LEAK` comment on `Box::leak()` calls.                                                                                                                      |
 | rust_box_vec                       | medium   | rust-ast       | yes     | no      | Ban `Box<Vec<T>>`, `Box<String>`, `Box<Box<T>>` (unnecessary double indirection).                                                                                               |
 | rust_build_rs_external_tool        | medium   | rust-ast       | yes     | no      | Flag build.rs usage of external tools, hard-required env vars, and build-time binding generation.                                                                               |
-| rust_builder_conventions           | medium   | rust-ast       | yes     | no      | Enforce builder conventions: chainable by-value setters named `x()`, a final `build()`, and `X::builder()` instead of `XBuilder::new()`.                                        |
+| rust_builder_conventions           | medium   | rust-ast       | yes     | no      | Enforce builder conventions: chainable by-value setters named `x()`, a terminal build/finish/into\_\* method, and `X::builder()` when a separate `X` product type exists.       |
 | rust_builder_fallible_setter       | medium   | rust-ast       | yes     | no      | Flag builder setters returning `Result` — setters accept infallibly, validation belongs in `build()`.                                                                           |
-| rust_builder_param                 | low      | rust-ast       | yes     | no      | Flag parameters typed `*Builder`/`*Factory` — ask for `impl Fn() -> T` instead.                                                                                                 |
+| rust_builder_param                 | low      | rust-ast       | yes     | no      | Flag owned/shared parameters typed `*Builder`/`*Factory` — ask for `impl Fn() -> T` instead.                                                                                    |
 | rust_busy_wait                     | medium   | rust-ast       | yes     | no      | Flag spin loops polling `try_recv`/`try_lock`/atomics without sleeping, yielding, or blocking.                                                                                  |
 | rust_catch_unwind                  | high     | rust-ast       | yes     | no      | Require `// PANIC-BOUNDARY:` comment on `catch_unwind` calls.                                                                                                                   |
 | rust_cfg_not_test                  | medium   | rust-line      | yes     | no      | Flag `#[cfg(not(test))]` — use dependency injection or feature flags instead.                                                                                                   |
-| rust_clone_in_loop                 | medium   | rust-ast       | no      | no      | Flag `.clone()` and `.to_owned()` calls on loop-invariant receivers inside loop bodies.                                                                                         |
-| rust_closure_dense_method_chain    | medium   | rust-ast       | no      | no      | Flag method-call chains containing at least the configured number of inline closure arguments.                                                                                  |
+| rust_closure_dense_method_chain    | medium   | rust-ast       | yes     | no      | Flag method-call chains that are very long or contain many inline closure arguments.                                                                                            |
 | rust_closure_param_position        | low      | rust-ast       | yes     | no      | Flag closure parameters that are not last, and fns taking more than one closure.                                                                                                |
 | rust_collection_new_in_loop        | medium   | rust-ast       | no      | no      | Flag collection constructors (`Vec::new()`, `vec![]`, `with_capacity`, ...) bound via `let` inside loops.                                                                       |
 | rust_collection_trait_completeness | low      | rust-ast       | yes     | no      | Require collection trait counterparts: `iter()` needs `impl IntoIterator for &T`, `iter_mut()` needs `impl IntoIterator for &mut T`, and `FromIterator`/`Extend` come in pairs. |
 | rust_comment_space                 | low      | rust-line      | yes     | yes     | Require a space after `//` in comments (`//bad` -> `// good`).                                                                                                                  |
 | rust_commented_code                | low      | rust-line      | yes     | no      | Detect blocks of commented-out code (2+ consecutive lines).                                                                                                                     |
 | rust_concrete_io_param             | low      | rust-ast       | no      | no      | Flag fn parameters typed as concrete I/O handles like `File` or `TcpStream`.                                                                                                    |
-| rust_const_fn_candidate            | low      | rust-ast       | yes     | no      | Flag syntactically simple functions worth evaluating as `const fn` candidates.                                                                                                  |
-| rust_const_needs_doc               | low      | rust-ast       | no      | no      | Require a doc or line comment on private consts and statics holding literal values.                                                                                             |
 | rust_conversion_self_convention    | medium   | rust-ast       | no      | no      | Enforce C-CONV receivers: `as_`/`to_` methods borrow (`&self`), `into_` methods consume (`self`).                                                                               |
-| rust_ctor_new                      | low      | rust-ast       | yes     | no      | Flag public structs with `Default` but no `pub fn new` — constructors are static inherent methods (C-CTOR).                                                                     |
+| rust_ctor_new                      | low      | rust-ast       | yes     | no      | Flag public structs with `Default` but no public constructor (C-CTOR).                                                                                                          |
 | rust_ctor_param_count              | medium   | rust-ast       | no      | no      | Flag constructors with too many parameters or runs of identically-typed primitives — cascade construction through helper types.                                                 |
-| rust_cyclomatic_complexity         | medium   | rust-ast       | no      | no      | Flag functions with cyclomatic complexity > threshold.                                                                                                                          |
+| rust_cyclomatic_complexity         | medium   | rust-ast       | no      | no      | Flag functions with structural control-flow complexity above the configured threshold.                                                                                          |
 | rust_dbg                           | medium   | rust-ast       | yes     | yes     | Ban `dbg!()` macro calls in production code.                                                                                                                                    |
 | rust_deep_exit                     | high     | rust-ast       | yes     | no      | Ban `std::process::exit()` in library code.                                                                                                                                     |
 | rust_deeply_nested_types           | low      | rust-ast       | yes     | no      | Flag type annotations with > 3 levels of generic nesting.                                                                                                                       |
@@ -104,7 +101,7 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_doc_param_table               | low      | rust-line      | yes     | no      | Ban `# Parameters`/`# Arguments`/`# Params` sections in doc comments.                                                                                                           |
 | rust_drop_panic                    | high     | rust-ast       | yes     | no      | Ban `panic!`, `.unwrap()`, `.expect()` inside `impl Drop`.                                                                                                                      |
 | rust_dup_expressions               | high     | rust-ast       | yes     | no      | Flag identical sub-expressions like `x == x`, `a - a`, `b && b`.                                                                                                                |
-| rust_duplicate_strings             | low      | rust-workspace | yes     | no      | Find long string literals repeated across files; full-workspace runs are authoritative.                                                                                         |
+| rust_duplicate_strings             | low      | rust-workspace | yes     | no      | Find long string literals repeated throughout production source; full-workspace runs are authoritative.                                                                         |
 | rust_duplicate_words               | low      | rust-line      | yes     | yes     | Flag repeated words in comments like `the the` or `is is`.                                                                                                                      |
 | rust_dyn_wrapper_in_api            | low      | rust-ast       | yes     | no      | Flag `Rc<dyn …>`/`Arc<dyn …>`/`Box<dyn …>` in pub fn params, returns, and pub struct fields.                                                                                    |
 | rust_error_missing_traits          | medium   | rust-ast       | yes     | no      | Require `Display` and `std::error::Error` on public `*Error` types.                                                                                                             |
@@ -118,19 +115,19 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_ffi_in_core                   | medium   | rust-ast       | yes     | no      | Flag `#[no_mangle] extern "C"` exports and `#[repr(C)]` raw-pointer structs in non-FFI crates.                                                                                  |
 | rust_ffi_thin_glue                 | low      | rust-ast       | yes     | no      | Flag `extern "C"` functions in `*-ffi` crates whose body exceeds the line threshold.                                                                                            |
 | rust_first_doc_sentence            | low      | rust-line      | no      | no      | Require the first doc sentence to end on the first line within a word budget.                                                                                                   |
-| rust_floating_point_eq             | high     | rust-ast       | yes     | no      | Flag direct `==`/`!=` comparison on `f32`/`f64` values.                                                                                                                         |
+| rust_floating_point_eq             | high     | rust-ast       | yes     | no      | Flag direct nonzero `==`/`!=` comparison on `f32`/`f64` values for review.                                                                                                      |
 | rust_foreign_reexports             | medium   | rust-ast       | yes     | no      | Flag `pub use` re-exports of items from foreign crates.                                                                                                                         |
 | rust_from_instead_of_as            | low      | rust-ast       | yes     | yes     | Flag `as` casts on suffixed literals — use `From`/`Into` instead.                                                                                                               |
 | rust_future_send_assert            | low      | rust-ast       | yes     | no      | Require a compile-time `Send` assertion for every explicit `impl Future` in the same file.                                                                                      |
-| rust_getter_prefix                 | low      | rust-ast       | no      | no      | Flag methods named `get_something` — Rust getters are named after the field (C-GETTER).                                                                                         |
+| rust_getter_prefix                 | low      | rust-ast       | no      | no      | Flag receiver-only accessor methods named `get_something` — Rust getters are named after the field (C-GETTER).                                                                  |
 | rust_glob_reexport                 | medium   | rust-ast       | yes     | no      | Flag `pub use foo::*` glob re-exports outside platform-cfg'd HAL forwarding.                                                                                                    |
 | rust_global_state                  | medium   | rust-ast       | yes     | no      | Flag `static` items with interior mutability and all `thread_local!` state.                                                                                                     |
-| rust_hardcoded_url                 | medium   | rust-line      | yes     | no      | Flag hardcoded URLs in source code (should use config/env).                                                                                                                     |
+| rust_hardcoded_url                 | medium   | rust-ast       | yes     | no      | Flag URL-valued string literals compiled into source code (should use config/env).                                                                                              |
 | rust_impl_into_for_owned           | medium   | rust-ast       | yes     | no      | Flag `impl Into<T> for X` — implement `From<X> for T` instead (gives Into for free).                                                                                            |
 | rust_impl_member_order             | medium   | rust-ast       | no      | yes     | Require inherent impl members to follow the canonical category and visibility order.                                                                                            |
 | rust_infallible_from_weak          | medium   | rust-ast       | yes     | no      | Flag `impl From<weak>` next to fallible construction of the same type.                                                                                                          |
 | rust_inherent_before_trait_impl    | low      | rust-ast       | yes     | no      | Require an inherent impl to precede trait impls for the same local type.                                                                                                        |
-| rust_inline_test_module_size       | low      | rust-ast       | yes     | no      | Flag `#[cfg(test)] mod` blocks spanning more than threshold lines.                                                                                                              |
+| rust_inline_test_module_size       | low      | rust-ast       | yes     | no      | Flag inline `#[cfg(test)] mod` blocks exceeding the configured nonblank-line threshold.                                                                                         |
 | rust_large_async_local             | medium   | rust-ast       | yes     | no      | Flag by-value `[T; N]` locals and parameters over threshold bytes inside async fns and blocks.                                                                                  |
 | rust_large_enum_variant            | medium   | rust-ast       | yes     | no      | Flag enum variants that are much larger than others (should Box the large variant).                                                                                             |
 | rust_large_fn_params               | medium   | rust-ast       | yes     | no      | Flag functions with > threshold parameters.                                                                                                                                     |
@@ -141,28 +138,27 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_loop_to_while                 | low      | rust-ast       | yes     | no      | Flag `loop { if cond { break; } ... }` — use `while` instead.                                                                                                                   |
 | rust_lossy_cast                    | medium   | rust-ast       | yes     | no      | Flag `as` casts to types that lose precision (`f32`, `u8`, `u16`, `i8`, `i16`).                                                                                                 |
 | rust_macro_hidden_items            | medium   | rust-ast       | yes     | no      | Flag fixed-name `pub` items emitted from quote! bodies.                                                                                                                         |
-| rust_magic_numbers                 | low      | rust-ast       | no      | no      | Flag numeric literals outside the configured allowlist for review.                                                                                                              |
+| rust_magic_numbers                 | low      | rust-ast       | no      | no      | Flag numeric values repeated within one function or module scope.                                                                                                               |
 | rust_manual_async_fn               | low      | rust-ast       | yes     | no      | Flag non-async functions that return `impl Future` by wrapping the whole body in one `async` block.                                                                             |
 | rust_manual_error_impl             | low      | rust-ast       | yes     | no      | Reject hand-written `Display` and `Error` implementations for `*Error` types.                                                                                                   |
-| rust_map_err_pure_wrap             | low      | rust-ast       | yes     | no      | Flag `.map_err(...)` that only wraps the error in another type — implement `From` and let `?` convert.                                                                          |
-| rust_match_layout                  | low      | rust-ast       | yes     | no      | Keep match arms and `matches!` patterns visually structured.                                                                                                                    |
-| rust_max_fn_lines                  | medium   | rust-ast       | yes     | no      | Flag functions longer than threshold lines.                                                                                                                                     |
+| rust_map_err_pure_wrap             | low      | rust-ast       | yes     | no      | Flag `.map_err(Type::from)` when `?` can already perform the same declared conversion.                                                                                          |
+| rust_match_layout                  | low      | rust-ast       | yes     | yes     | Keep one-line match arms compact, collapse empty arm blocks, and separate every arm when any body is multiline.                                                                 |
+| rust_max_fn_lines                  | medium   | rust-ast       | yes     | no      | Flag functions longer than the configured nonblank-line threshold.                                                                                                              |
 | rust_max_nesting                   | medium   | rust-ast       | yes     | no      | Flag nesting depth > threshold levels.                                                                                                                                          |
 | rust_mem_forget                    | high     | rust-ast       | yes     | no      | Require `LEAK` or `SAFETY` comment on `std::mem::forget()` calls.                                                                                                               |
 | rust_missing_assert_message        | low      | rust-ast       | yes     | no      | Require a message argument on `assert!`, `assert_eq!`, `assert_ne!`.                                                                                                            |
-| rust_missing_capacity              | low      | rust-ast       | yes     | no      | Flag collections built with `new()`/`default()` then grown inside a loop over a sized source.                                                                                   |
+| rust_missing_capacity              | low      | rust-ast       | yes     | no      | Flag collections built with `new()`/`default()` then unconditionally grown inside a loop over a sized source.                                                                   |
 | rust_missing_debug                 | low      | rust-ast       | yes     | yes     | Require `#[derive(Debug)]` on public structs and enums.                                                                                                                         |
 | rust_missing_error_context         | medium   | rust-ast       | yes     | no      | Flag `.map_err(\|_\| ...)` that discards the original error.                                                                                                                    |
 | rust_mod_order                     | low      | rust-ast       | yes     | yes     | Require contiguous module-declaration blocks to be alphabetically sorted.                                                                                                       |
-| rust_module_docs                   | medium   | rust-line      | yes     | no      | Require `//!` module docs at the top of `lib.rs` and `mod.rs` files.                                                                                                            |
-| rust_module_prefix_in_name         | low      | rust-ast       | no      | no      | Flag pub type definitions whose name repeats the module name as a prefix (`FooId` in `foo.rs`).                                                                                 |
+| rust_module_docs                   | medium   | rust-line      | yes     | no      | Require `//!` crate docs at the top of Rust library roots.                                                                                                                      |
 | rust_multiple_inherent_impl        | low      | rust-ast       | yes     | no      | Flag multiple `impl Foo` blocks for the same type in one file.                                                                                                                  |
 | rust_mutex_in_async                | high     | rust-ast       | yes     | no      | Flag `std::sync::Mutex` usage in async functions under an async-mutex-only policy.                                                                                              |
 | rust_native_escape_hatches         | low      | rust-ast       | yes     | no      | Require `unsafe fn from_native`, `into_native`, and `to_native` on public raw-pointer wrapper structs.                                                                          |
 | rust_nested_smart_pointers         | medium   | rust-ast       | yes     | no      | Flag directly nested heap pointers (`Arc<Box<T>>`, `Rc<Rc<T>>`, ...) plus `Arc<Vec<T>>`/`Arc<String>`.                                                                          |
-| rust_newtype_pub_field             | medium   | rust-ast       | yes     | no      | Flag pub single-field structs exposing a pub primitive/`&str`/`String` field.                                                                                                   |
+| rust_newtype_pub_field             | medium   | rust-ast       | yes     | no      | Flag public weak-typed newtype fields only when the type also exposes fallible construction.                                                                                    |
 | rust_no_prelude                    | high     | rust-line      | yes     | no      | Ban `prelude` module declarations and `prelude.rs`/`prelude/mod.rs` files.                                                                                                      |
-| rust_non_exhaustive_on_public      | medium   | rust-ast       | no      | no      | Flag public enums without `#[non_exhaustive]` — prevents breaking changes when adding variants.                                                                                 |
+| rust_non_exhaustive_on_public      | medium   | rust-ast       | no      | no      | Flag `pub` enums without `#[non_exhaustive]` when downstream variants should remain extensible.                                                                                 |
 | rust_nonsend_across_await          | medium   | rust-ast       | yes     | no      | Flag `Rc`/`RefCell` bindings in async code when an `.await` occurs later in the same block.                                                                                     |
 | rust_ok_or_eager                   | low      | rust-ast       | yes     | yes     | Flag `.ok_or()`/`.unwrap_or()` with eagerly evaluated arguments.                                                                                                                |
 | rust_owned_ref_param               | medium   | rust-ast       | no      | no      | Flag fn parameters typed `&String`, `&PathBuf`, `&Vec<T>`, `&OsString`.                                                                                                         |
@@ -187,7 +183,6 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_rulewright_directives         | low      | rust-line      | yes     | no      | Enforce file-wide #rw directives at top of file with a blank line separator.                                                                                                    |
 | rust_sensitive_debug               | high     | rust-ast       | yes     | no      | Flag `#[derive(Debug)]` on structs with sensitive fields like `password`.                                                                                                       |
 | rust_similar_fns                   | low      | rust-workspace | yes     | no      | Find exact and near duplicate function bodies; full-workspace runs are authoritative.                                                                                           |
-| rust_similar_structs               | low      | rust-workspace | yes     | no      | Find exact, near, and containment duplicate named-field structs; full-workspace runs are authoritative.                                                                         |
 | rust_single_item_path              | medium   | rust-ast       | yes     | no      | Flag `pub use` re-exports that duplicate paths already public through a sibling `pub mod`.                                                                                      |
 | rust_sorted                        | low      | rust-line      | yes     | yes     | Enforce ordering in contiguous regions marked with `#rw:sorted(asc)` or `#rw:sorted(desc)`.                                                                                     |
 | rust_static_mut                    | high     | rust-line      | yes     | no      | Ban `static mut` declarations — use `AtomicT`, `Mutex`, or `OnceLock`.                                                                                                          |
@@ -197,13 +192,13 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_tautological_assert           | low      | rust-ast       | yes     | no      | Flag test asserts comparing a constant against a literal (or literal vs literal).                                                                                               |
 | rust_thiserror_qualified           | low      | rust-ast       | yes     | yes     | Require thiserror derives to use the qualified `thiserror::Error` path.                                                                                                         |
 | rust_todo                          | low      | rust-line      | yes     | no      | Require TODO/FIXME/HACK/XXX to have parenthesized context.                                                                                                                      |
-| rust_too_many_lines_in_file        | medium   | rust-line      | yes     | no      | Flag files exceeding threshold lines.                                                                                                                                           |
+| rust_too_many_lines_in_file        | medium   | rust-line      | yes     | no      | Flag files exceeding the configured nonblank-line threshold.                                                                                                                    |
 | rust_trait_logic_not_inherent      | low      | rust-ast       | yes     | no      | Flag substantial logic in impls of locally-defined traits when the type has no same-named inherent method.                                                                      |
 | rust_transmute_in_safe_fn          | high     | rust-ast       | yes     | no      | Flag `transmute` inside a safe `pub` fn.                                                                                                                                        |
 | rust_transmute_usage               | high     | rust-ast       | yes     | no      | Require `SAFETY` comment on `std::mem::transmute` calls.                                                                                                                        |
 | rust_type_def_ordering             | low      | rust-ast       | yes     | no      | Flag `impl` blocks that appear before their type definition.                                                                                                                    |
 | rust_unbalanced_crate_root         | low      | rust-ast       | yes     | no      | Flag `lib.rs` roots that are flat item dumps (too many pub items) or empty shells (no pub items over many pub modules).                                                         |
-| rust_unchecked_indexing            | low      | rust-ast       | yes     | no      | Flag `container[expr]` indexing with non-literal indices.                                                                                                                       |
+| rust_unchecked_indexing            | low      | rust-ast       | no      | no      | Flag `container[expr]` indexing with non-literal indices.                                                                                                                       |
 | rust_unnecessary_collect           | low      | rust-ast       | yes     | no      | Flag `.collect().iter()` — remove the intermediate collection.                                                                                                                  |
 | rust_unsafe_comment                | high     | rust-ast       | yes     | no      | Require `// SAFETY:` comment on `unsafe` blocks.                                                                                                                                |
 | rust_unsafe_fn_safety_doc          | high     | rust-ast       | yes     | no      | Require a `# Safety` doc section or `// SAFETY:` comment on every `unsafe fn`.                                                                                                  |
@@ -233,7 +228,7 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 
 Ban hardcoded home directory paths like `/Users/` or `/home/` in string literals.
 
-> Absolute home paths break on other machines and in CI. Use environment variables or relative paths.
+> Absolute home paths break on other machines and in CI. Resolve runtime paths from configuration, an injected workspace root, or a documented environment variable; scope out test fixtures that intentionally exercise absolute-path behavior.
 
 |          |           |
 | -------- | --------- |
@@ -369,9 +364,9 @@ _trailing comments aligned_
 
 ### rust_alloc_in_loop
 
-Flag `format!()` and `.to_string()` inside loops.
+Flag loop-invariant `format!()` and `.to_string()` work repeated inside loops.
 
-> These syntax forms create a new String each iteration. In a measured hot loop, reuse a buffer, write into existing storage, or move the conversion outside the loop when possible. Intentional allocations and cold loops may be excluded through configuration or a documented suppression.
+> A String built only from values invariant across the nearest loop can be created once before that loop. Per-item strings and lazy error messages are not reported merely because they allocate; use Clippy's format-append lints or profiling when the engineering concern is avoidable allocation rather than loop placement.
 
 |          |          |
 | -------- | -------- |
@@ -382,19 +377,43 @@ Flag `format!()` and `.to_string()` inside loops.
 
 **Bad (triggers violation):**
 
-_format! in for loop_
+_loop-invariant format in for loop_
 
 ```rust
-fn f() { for i in 0..10 { let _ = format!("item {}", i); } }
+fn f(prefix: &str) { for _ in 0..10 { let _ = format!("{} header", prefix); } }
 ```
 
-_to_string in while loop_
+_loop-invariant to_string in while loop_
 
 ```rust
-fn f() { let mut i = 0; while i < 10 { let _ = i.to_string(); i += 1; } }
+fn f(limit: u64) { let mut i = 0; while i < limit { let _ = limit.to_string(); i += 1; } }
 ```
 
 **Good (passes):**
+
+_per-item format is required output_
+
+```rust
+fn f(items: &[u64]) { for item in items { emit(format!("item {}", item)); } }
+```
+
+_while condition value varies by iteration_
+
+```rust
+fn f() { let mut i = 0; while i < 10 { emit(i.to_string()); i += 1; } }
+```
+
+_lazy error formatting uses its closure binding_
+
+```rust
+fn f(items: &[Item]) { for item in items { convert(item).map_err(|error| Problem::new(format!("conversion failed: {error}")))?; } }
+```
+
+_formatting on an exiting branch runs at most once_
+
+```rust
+fn f(items: &[Item], domain: &str) -> Result<(), Error> { for item in items { if invalid(item) { return Err(Error::new(format!("invalid {domain}"))); } } Ok(()) }
+```
 
 _push_str does not necessarily allocate_
 
@@ -439,7 +458,7 @@ mod tests {
 
 Require a `reason = "..."` or comment explaining why `#[allow(...)]`/`#[expect(...)]` is used.
 
-> Unexplained lint overrides hide the intent behind suppressing a warning, making it unclear if the suppression is still needed.
+> Unexplained lint overrides hide whether a warning is understood or merely silenced. Keep the override as narrow as practical and state the concrete reason the lint does not apply at that location; do not restate the lint name.
 
 |          |           |
 | -------- | --------- |
@@ -950,9 +969,9 @@ mod tests {
 
 ### rust_async_loop_no_yield
 
-Flag loops in async contexts whose bodies never `.await` (CPU-bound work without yield points).
+Flag potentially unbounded `loop`/`while` work in async contexts whose bodies never `.await`.
 
-> CPU-bound async loops must cooperatively yield (yield_now().await) so they do not starve the runtime.
+> Potentially unbounded CPU work in an async task must cooperate with the runtime or move to a blocking/worker boundary. Finite `for` traversals are not enough evidence by themselves: chunk or yield those only when their input size and measured runtime justify it.
 
 |          |          |
 | -------- | -------- |
@@ -963,25 +982,31 @@ Flag loops in async contexts whose bodies never `.await` (CPU-bound work without
 
 **Bad (triggers violation):**
 
-_async for loop with call but no await_
-
-```rust
-async fn f(xs: &[u32]) { for x in xs { process(*x); } }
-```
-
 _loop in async block without await_
 
 ```rust
 fn g() { let _fut = async { loop { step(); } }; }
 ```
 
-_three statements without calls or await_
+_async while loop without yield_
+
+```rust
+async fn f(mut ready: bool) { while ready { ready = poll(); } }
+```
+
+**Good (passes):**
+
+_bounded async for loop_
+
+```rust
+async fn f(xs: &[u32]) { for x in xs { process(*x); } }
+```
+
+_bounded for loop with several statements_
 
 ```rust
 async fn f(xs: &[u32]) { for x in xs { let a = *x; let b = a + 1; let _c = b - a; } }
 ```
-
-**Good (passes):**
 
 _loop yields via yield_now().await_
 
@@ -1170,7 +1195,7 @@ let x = "hello world";
 
 Flag functions with threshold+ `bool` parameters (error-prone API design).
 
-> Multiple bool parameters are easy to mix up at call sites. Use an enum to make each argument self-documenting.
+> Multiple bool parameters are easy to mix up at call sites. Replace each real mode choice with a named enum or options type; do not wrap booleans without making the call site more expressive.
 
 |                  |                  |
 | ---------------- | ---------------- |
@@ -1226,11 +1251,18 @@ mod tests {
 }
 ```
 
+_trait implementation preserves required signature_
+
+```rust
+struct Runtime;
+impl Backend for Runtime { fn select(&mut self, condition: bool, yes: bool, no: bool) -> bool { if condition { yes } else { no } } }
+```
+
 ### rust_box_leak
 
 Require `SAFETY` or `LEAK` comment on `Box::leak()` calls.
 
-> Box::leak intentionally creates a memory leak. A justification comment proves it was deliberate, not accidental.
+> Box::leak deliberately gives up deallocation. Prefer owned storage with an explicit lifetime; when process-lifetime allocation is the design, document why the allocation count is bounded and why reclamation is unnecessary.
 
 |          |           |
 | -------- | --------- |
@@ -1327,7 +1359,7 @@ const NOTE: &str = "Box<String> and Box<Box<T>>";
 
 Flag build.rs usage of external tools, hard-required env vars, and build-time binding generation.
 
-> Builds must work out of the box with cargo and rustc alone — external tools and required env vars break every downstream consumer.
+> Published crates should build with Cargo and rustc alone. Check generated artifacts in, use a Rust build dependency, or make optional integration explicit; do not make every downstream build depend on an undeclared executable or environment variable.
 
 |          |          |
 | -------- | -------- |
@@ -1405,9 +1437,9 @@ fn main() { println!("cargo:rerun-if-changed=src/schema.json"); }
 
 ### rust_builder_conventions
 
-Enforce builder conventions: chainable by-value setters named `x()`, a final `build()`, and `X::builder()` instead of `XBuilder::new()`.
+Enforce builder conventions: chainable by-value setters named `x()`, a terminal build/finish/into\_\* method, and `X::builder()` when a separate `X` product type exists.
 
-> Builders that deviate from the canonical pattern break fluent construction and surprise users who expect X::builder()...build().
+> Consistent fluent setters and an explicit terminal transition make construction easy to follow. A standalone builder may expose new(); the X::builder() shortcut is expected only when X is a same-module product type.
 
 |          |          |
 | -------- | -------- |
@@ -1433,13 +1465,14 @@ impl ConnBuilder {
 _public new on builder_
 
 ```rust
+pub struct Conn;
 pub struct ConnBuilder;
 impl ConnBuilder {
     pub fn new() -> Self {
         ConnBuilder
     }
-    pub fn build(self) -> u32 {
-        0
+    pub fn build(self) -> Conn {
+        Conn
     }
 }
 ```
@@ -1521,6 +1554,22 @@ impl FooBuilder {
     pub fn build(self) -> Foo {
         Foo
     }
+}
+```
+
+_builder is the public entry point and converts into a draft_
+
+```rust
+pub struct PlanBuilder; pub struct Draft; impl PlanBuilder { pub fn new() -> Self { Self } pub fn into_draft(self) -> Result<Draft, Error> { Ok(Draft) } }
+```
+
+_imperative builder mutation_
+
+```rust
+pub struct ConnBuilder { port: u16 }
+impl ConnBuilder {
+    pub fn set_port(&mut self, port: u16) { self.port = port; }
+    pub fn build(self) -> u16 { self.port }
 }
 ```
 
@@ -1614,6 +1663,12 @@ impl HostBuilder {
 }
 ```
 
+_fallible consuming terminal conversion_
+
+```rust
+struct HostBuilder; struct Draft; impl HostBuilder { fn into_draft(self) -> Result<Draft, String> { Ok(Draft) } }
+```
+
 _fallible associated fn_
 
 ```rust
@@ -1652,9 +1707,9 @@ mod tests {
 
 ### rust_builder_param
 
-Flag parameters typed `*Builder`/`*Factory` — ask for `impl Fn() -> T` instead.
+Flag owned/shared parameters typed `*Builder`/`*Factory` — ask for `impl Fn() -> T` instead.
 
-> Accepting factories or builders as parameters imports OO indirection; an impl Fn() -> T expresses repeatable instantiation idiomatically.
+> Accepting an owned builder or shared factory as a parameter often imports OO indirection; an impl Fn() -> T expresses repeatable instantiation idiomatically. A mutable builder reference is an explicit accumulation context and should be passed directly.
 
 |          |          |
 | -------- | -------- |
@@ -1687,6 +1742,12 @@ impl App {
 ```
 
 **Good (passes):**
+
+_mutable builder accumulation context_
+
+```rust
+fn add_fields(builder: &mut WidgetBuilder) { builder.field(1); }
+```
 
 _closure factory parameter_
 
@@ -1793,7 +1854,7 @@ mod tests {
 
 Require `// PANIC-BOUNDARY:` comment on `catch_unwind` calls.
 
-> Catching a panic and continuing risks observing broken state. The comment must state the controlled-restart story.
+> Catching a panic and continuing may expose poisoned or partially mutated state. Prefer an ordinary Result boundary; when isolating plugins, callbacks, or worker tasks, document what state is discarded and where execution restarts safely.
 
 |          |          |
 | -------- | -------- |
@@ -1889,82 +1950,27 @@ _comment with cfg not test_
 // #[cfg(not(test))]
 ```
 
-### rust_clone_in_loop
-
-Flag `.clone()` and `.to_owned()` calls on loop-invariant receivers inside loop bodies.
-
-> A loop-invariant ownership conversion may be avoidable or movable outside the loop. Borrow or restructure when possible. Conversions of values bound inside the loop are not reported because they commonly express a required per-item ownership transfer. This syntax-only rule cannot distinguish heap copies from cheap Arc, Rc, or Copy clones, so intentional cheap clones should be suppressed with a reason.
-
-|          |          |
-| -------- | -------- |
-| Severity | medium   |
-| Type     | rust-ast |
-| Enabled  | no       |
-| Fixable  | no       |
-
-**Bad (triggers violation):**
-
-_clone in while loop_
-
-```rust
-fn f(s: &String) { while true { let y = s.clone(); } }
-```
-
-_clone in loop loop_
-
-```rust
-fn f(s: &String) { loop { let y = s.clone(); break; } }
-```
-
-_to_owned in loop_
-
-```rust
-fn f(s: &str) { loop { let y = s.to_owned(); break; } }
-```
-
-**Good (passes):**
-
-_clone of loop item varies by iteration_
-
-```rust
-fn f(v: Vec<String>) { for x in &v { let y = x.clone(); } }
-```
-
-_clone outside loop_
-
-```rust
-fn f(s: &String) { let y = s.clone(); }
-```
-
-_clone in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn f(v: Vec<String>) { for x in &v { let y = x.clone(); } }
-}
-```
-
 ### rust_closure_dense_method_chain
 
-Flag method-call chains containing at least the configured number of inline closure arguments.
+Flag method-call chains that are very long or contain many inline closure arguments.
 
-> Closure-dense fluent chains hide several branching decisions in one expression. Name an intermediate result or extract a helper.
+> Long fluent chains can hide intermediate states, while closure-dense chains can hide several branching decisions in one expression. Split only when the work has meaningful logical stages, bind each stage including the final result, and return the final binding. When one chain already represents a single coherent operation, suppress the finding with that reason instead of inventing arbitrary intermediate variables.
 
-|                  |                  |
-| ---------------- | ---------------- |
-| Severity         | medium           |
-| Type             | rust-ast         |
-| Enabled          | no               |
-| Fixable          | no               |
-| Param: threshold | i64, default = 3 |
+|                          |                   |
+| ------------------------ | ----------------- |
+| Severity                 | medium            |
+| Type                     | rust-ast          |
+| Enabled                  | yes               |
+| Fixable                  | no                |
+| Param: closure_threshold | i64, default = 6  |
+| Param: chain_threshold   | i64, default = 12 |
 
 **Bad (triggers violation):**
 
 _dense selection chain_
 
 ```rust
-fn f(slots: &[Slot]) { let _ = slots.iter().enumerate().filter_map(|(index, slot)| ready(slot).then_some((index, slot))).min_by(|left, right| compare(left, right)).map(first).or_else(|| depleted(slots)); }
+fn f(slots: &[Slot]) { let _ = slots.iter().enumerate().filter_map(|(index, slot)| ready(slot).then_some((index, slot))).filter(|(_, slot)| allowed(slot)).inspect(|item| observe(item)).min_by(|left, right| compare(left, right)).map(|item| first(item)).or_else(|| depleted(slots)); }
 ```
 
 **Good (passes):**
@@ -1973,6 +1979,12 @@ _twenty uniform fluent calls_
 
 ```rust
 fn f(w: Writer) { let _ = w.push_bind(1).push_bind(2).push_bind(3).push_bind(4).push_bind(5).push_bind(6).push_bind(7).push_bind(8).push_bind(9).push_bind(10).push_bind(11).push_bind(12).push_bind(13).push_bind(14).push_bind(15).push_bind(16).push_bind(17).push_bind(18).push_bind(19).push_bind(20); }
+```
+
+_long debug builder field list_
+
+```rust
+fn f(value: &Value, out: &mut Formatter) { out.debug_struct("Value").field("a", &value.a).field("b", &value.b).field("c", &value.c).field("d", &value.d).field("e", &value.e).field("f", &value.f).field("g", &value.g).field("h", &value.h).field("i", &value.i).field("j", &value.j).finish(); }
 ```
 
 _long closure-free heterogeneous builder_
@@ -2089,7 +2101,7 @@ mod tests {
 
 Flag collection constructors (`Vec::new()`, `vec![]`, `with_capacity`, ...) bound via `let` inside loops.
 
-> Allocating a fresh collection per iteration is invisible overhead — hoist it out of the loop and .clear() each round.
+> A fresh collection on every iteration may be avoidable allocation. Reuse one buffer with clear() only when iterations do not retain or return its contents and retained capacity is acceptable; otherwise keep the ownership boundary and suppress or tune the rule.
 
 |          |          |
 | -------- | -------- |
@@ -2130,13 +2142,19 @@ _binding in nested block inside loop_
 fn f(xs: &[u32]) { for x in xs { if *x > 0 { let mut v = Vec::new(); v.push(*x); } } }
 ```
 
-_return escape still flagged (approximation: only call-argument use counts as escaping)_
+**Good (passes):**
+
+_allocation-free empty string used as state_
+
+```rust
+fn f(xs: &[String]) { for _ in 0..2 { let mut previous = String::new(); for value in xs { if value != &previous { previous = value.clone(); } } } }
+```
+
+_returned collection must remain iteration-local_
 
 ```rust
 fn f(n: usize) -> Vec<u32> { for _ in 0..n { let v = Vec::new(); if !v.is_empty() { return v; } } Vec::new() }
 ```
-
-**Good (passes):**
 
 _escapes as method-call argument into outer collection_
 
@@ -2148,6 +2166,12 @@ _escapes as plain function-call argument_
 
 ```rust
 fn g(v: Vec<u32>) { drop(v); } fn f(n: usize) { for _ in 0..n { let v = Vec::new(); g(v); } }
+```
+
+_escapes through assignment into an output value_
+
+```rust
+struct Row { values: Vec<u32> } fn f(rows: &mut [Row]) { for row in rows { let mut values = Vec::with_capacity(4); values.push(1); row.values = values; } }
 ```
 
 _hoisted allocation cleared per iteration_
@@ -2363,7 +2387,7 @@ let x = 1;
 
 Detect blocks of commented-out code (2+ consecutive lines).
 
-> Commented-out code is dead weight. Use version control to recover old code instead of leaving it inline.
+> Commented-out implementation code is dead weight. Restore it as executable code or delete it and rely on version control; rewrite illustrative pseudocode as prose or a proper documentation example instead of disguising it as a stale statement.
 
 |          |           |
 | -------- | --------- |
@@ -2529,245 +2553,6 @@ _syntax tree parameter_
 fn inspect(file: &syn::File) {}
 ```
 
-### rust_const_fn_candidate
-
-Flag syntactically simple functions worth evaluating as `const fn` candidates.
-
-> Const eligibility depends on types, trait implementations, destructors, and the active toolchain. This rule only identifies candidates; the compiler must confirm any manual change.
-
-|          |          |
-| -------- | -------- |
-| Severity | low      |
-| Type     | rust-ast |
-| Enabled  | yes      |
-| Fixable  | no       |
-
-**Bad (triggers violation):**
-
-_pure arithmetic function_
-
-```rust
-fn double(x: u32) -> u32 { x * 2 }
-```
-
-_function with if-else on params_
-
-```rust
-fn max_val(a: u32, b: u32) -> u32 { if a > b { a } else { b } }
-```
-
-_match with literal arms is const-eligible_
-
-```rust
-fn f(a: u32) -> u32 { match a { _ => 1 } }
-```
-
-_struct literal is const-eligible_
-
-```rust
-fn f() -> Foo { Foo { x: 1 } }
-```
-
-_index expression is const-eligible_
-
-```rust
-fn f(a: [u32; 2]) -> u32 { a[0] }
-```
-
-_field access is const-eligible_
-
-```rust
-fn f(p: Point) -> u32 { p.x }
-```
-
-_tuple is const-eligible_
-
-```rust
-fn f(a: u32, b: u32) -> (u32, u32) { (a, b) }
-```
-
-_cast is const-eligible_
-
-```rust
-fn f(a: u32) -> u8 { a as u8 }
-```
-
-_nested block is const-eligible_
-
-```rust
-fn f() -> u32 { { 1 } }
-```
-
-_return of literal is const-eligible_
-
-```rust
-fn f() -> u32 { return 1; }
-```
-
-**Good (passes):**
-
-_already const fn_
-
-```rust
-const fn double(x: u32) -> u32 { x * 2 }
-```
-
-_function with method calls_
-
-```rust
-fn f(s: &str) -> usize { s.len() }
-```
-
-_function with macro call_
-
-```rust
-fn f() -> String { format!("hello") }
-```
-
-_const candidate in test_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn double(x: u32) -> u32 { x * 2 }
-}
-```
-
-_function with loop_
-
-```rust
-fn f() -> u32 { let mut i = 0; while i < 10 { i += 1; } i }
-```
-
-_empty function_
-
-```rust
-fn f() {}
-```
-
-_unsafe function_
-
-```rust
-unsafe fn f(x: u32) -> u32 { x * 2 }
-```
-
-_function with where clause_
-
-```rust
-fn f<T>(x: T) -> T where T: Copy { x }
-```
-
-_function with impl Trait param_
-
-```rust
-fn f(x: impl Into<u32>) -> u32 { 1 }
-```
-
-_function call is not const-eligible_
-
-```rust
-fn f() -> u32 { g() }
-```
-
-_await is not const-eligible_
-
-```rust
-fn f() -> u32 { a.await }
-```
-
-### rust_const_needs_doc
-
-Require a doc or line comment on private consts and statics holding literal values.
-
-> Magic values need context: why the value was chosen and what depends on it.
-
-|          |          |
-| -------- | -------- |
-| Severity | low      |
-| Type     | rust-ast |
-| Enabled  | no       |
-| Fixable  | no       |
-
-**Bad (triggers violation):**
-
-_undocumented const with numeric literal_
-
-```rust
-const TIMEOUT_SECS: u64 = 30;
-```
-
-_undocumented static with string literal_
-
-```rust
-static ENDPOINT: &str = "primary";
-```
-
-_literal nested in a call_
-
-```rust
-const RETRY: Duration = Duration::from_secs(30);
-```
-
-_pub(crate) const still needs a doc_
-
-```rust
-pub(crate) const TIMEOUT_SECS: u64 = 30;
-```
-
-**Good (passes):**
-
-_doc comment explains the value_
-
-```rust
-/// Upstream aborts after thirty seconds.
-const TIMEOUT_SECS: u64 = 30;
-```
-
-_line comment above explains the value_
-
-```rust
-// Matches the upstream timeout policy.
-const TIMEOUT_SECS: u64 = 30;
-```
-
-_comment above the attribute_
-
-```rust
-// Fixture table kept verbatim.
-#[rustfmt::skip]
-const NAMES: &[&str] = &["a"];
-```
-
-_pub const is pub_api_docs territory_
-
-```rust
-pub const TIMEOUT_SECS: u64 = 30;
-```
-
-_no literal in initializer_
-
-```rust
-const SIZE: usize = std::mem::size_of::<u64>();
-```
-
-_const in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    const TIMEOUT_SECS: u64 = 30;
-}
-```
-
-_function-local const is not module-level_
-
-```rust
-fn f() -> u64 {
-    const LOCAL: u64 = 30;
-    LOCAL
-}
-```
-
 ### rust_conversion_self_convention
 
 Enforce C-CONV receivers: `as_`/`to_` methods borrow (`&self`), `into_` methods consume (`self`).
@@ -2897,9 +2682,9 @@ mod tests {
 
 ### rust_ctor_new
 
-Flag public structs with `Default` but no `pub fn new` — constructors are static inherent methods (C-CTOR).
+Flag public structs with `Default` but no public constructor (C-CTOR).
 
-> Users reach for X::new() first; a type offering only Default surprises them and breaks the upstream C-CTOR convention.
+> A public type with private fields should expose an obvious constructor; `new` is conventional, while a clearer semantic name such as `empty` or `with_capacity` is equally usable. Do not add a redundant zero-argument constructor when the type already has an intentional parameterized constructor.
 
 |          |          |
 | -------- | -------- |
@@ -2954,6 +2739,28 @@ impl Pool {
 }
 ```
 
+_Default with parameterized constructor_
+
+```rust
+#[derive(Default)]
+pub struct Pool { size: u32 }
+impl Pool {
+    pub fn with_size(size: u32) -> Self { Pool { size } }
+}
+```
+
+_Default with a semantic zero-argument constructor_
+
+```rust
+#[derive(Default)]
+pub struct Pool { size: u32 }
+impl Pool {
+    pub fn empty() -> Self {
+        Pool { size: 0 }
+    }
+}
+```
+
 _no Default_
 
 ```rust
@@ -2988,7 +2795,7 @@ mod tests {
 
 Flag constructors with too many parameters or runs of identically-typed primitives — cascade construction through helper types.
 
-> Long or same-typed constructor parameter lists invite silent argument mix-ups; grouping parameters semantically makes construction self-checking.
+> Long or same-typed constructor parameter lists invite silent argument mix-ups. Introduce named options or domain values along real conceptual boundaries; do not move unrelated arguments into an unstructured parameter object.
 
 |                  |                  |
 | ---------------- | ---------------- |
@@ -2996,16 +2803,16 @@ Flag constructors with too many parameters or runs of identically-typed primitiv
 | Type             | rust-ast         |
 | Enabled          | no               |
 | Fixable          | no               |
-| Param: threshold | i64, default = 4 |
+| Param: threshold | i64, default = 5 |
 
 **Bad (triggers violation):**
 
-_constructor with four parameters_
+_constructor with five parameters_
 
 ```rust
 struct Deposit;
 impl Deposit {
-    pub fn new(account: Account, amount: Currency, memo: Memo, clock: Clock) -> Self {
+    pub fn new(account: Account, amount: Currency, memo: Memo, clock: Clock, audit: Audit) -> Self {
         Deposit
     }
 }
@@ -3027,13 +2834,19 @@ _with\_ constructor returning type name_
 ```rust
 struct Deposit;
 impl Deposit {
-    pub fn with_parts(a: Account, b: Currency, c: Memo, d: Clock) -> Deposit {
+    pub fn with_parts(a: Account, b: Currency, c: Memo, d: Clock, audit: Audit) -> Deposit {
         Deposit
     }
 }
 ```
 
 **Good (passes):**
+
+_four distinct domain parameters_
+
+```rust
+struct Event; impl Event { pub fn new(key: Key, id: Id, count: Count, time: Time) -> Self { Event } }
+```
 
 _constructor with two parameters_
 
@@ -3109,9 +2922,9 @@ mod tests {
 
 ### rust_cyclomatic_complexity
 
-Flag functions with cyclomatic complexity > threshold.
+Flag functions with structural control-flow complexity above the configured threshold.
 
-> High cyclomatic complexity means many execution paths, making the function hard to test and prone to bugs.
+> Many independently branching execution paths make a function hard to test and prone to bugs; flat predicates and exhaustive value mappings stay readable without artificial helper extraction.
 
 |                  |                   |
 | ---------------- | ----------------- |
@@ -3129,19 +2942,21 @@ _too many branches_
 fn f(x: bool) { if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} if x {} }
 ```
 
-_mixed constructs over threshold_
+_mixed decision points over threshold_
 
 ```rust
 fn f(x: u8) -> u8 {
-    match x { 0 => 1, 1 => 2, 2 => 3, 3 => 4, _ => 5 }
+    match x { 0 => { if a { 1 } else { 2 } }, 1 => { if b { 3 } else { 4 } }, 2 => 5, 3 => 6, _ => 7 }
     for _ in it { }
     while a && b { }
-    loop { break v && w; }
-    let _ = c || d || e;
-    let _ = |z: bool| if z { 1 } else { 2 };
-    let _ = h()?;
-    let _ = p && q;
-    return x;
+    loop { break; }
+    if p && q { return x; }
+    if r { return 1; }
+    if s { return 2; }
+    if t { return 3; }
+    if u { return 4; }
+    if v { return 5; }
+    x
 }
 ```
 
@@ -3159,18 +2974,39 @@ _moderate branching is fine_
 fn f(x: bool) { if x {} if x {} if x {} if x {} if x {} if x {} }
 ```
 
-_mixed constructs at threshold_
+_large exhaustive value mapping_
 
 ```rust
-fn f(x: u8) -> u8 {
-    match x { 0 => 1, 1 => 2, 2 => 3, 3 => 4, _ => 5 }
-    for _ in it { }
-    while a && b { }
-    loop { break v && w; }
-    let _ = c || d || e;
-    let _ = |z: bool| if z { 1 } else { 2 };
-    let _ = h()?;
-    return x;
+fn name(value: Value) -> &'static str { match value { Value::A => "a", Value::B => "b", Value::C => "c", Value::D => "d", Value::E => "e", Value::F => "f", Value::G => "g", Value::H => "h", Value::I => "i", Value::J => "j", Value::K => "k", Value::L => "l", Value::M => "m", Value::N => "n", Value::O => "o", Value::P => "p" } }
+```
+
+_flat equality predicate_
+
+```rust
+fn same(left: &State, right: &State) -> bool { left.a == right.a && left.b == right.b && left.c == right.c && left.d == right.d && left.e == right.e && left.f == right.f && left.g == right.g && left.h == right.h && left.i == right.i && left.j == right.j && left.k == right.k && left.l == right.l && left.m == right.m && left.n == right.n && left.o == right.o && left.p == right.p }
+```
+
+_linear error propagation is not branching_
+
+```rust
+fn f() -> Result<(), Error> {
+    let a = first()?;
+    let b = second(a)?;
+    let c = third(b)?;
+    fourth(c)?;
+    fifth()?;
+    sixth()?;
+    seventh()?;
+    eighth()?;
+    ninth()?;
+    tenth()?;
+    eleventh()?;
+    twelfth()?;
+    thirteenth()?;
+    fourteenth()?;
+    fifteenth()?;
+    sixteenth()?;
+    Ok(())
 }
 ```
 
@@ -3276,7 +3112,7 @@ fn f() { exit(0); }
 
 Flag type annotations with > 3 levels of generic nesting.
 
-> Types like HashMap<String, Vec<Option<Arc<T>>>> are unreadable. Use type aliases to name intermediate types.
+> Types like HashMap<String, Vec<Option<Arc<T>>>> hide the domain structure. Introduce an alias or value type only where it gives the nested concept a meaningful name, not merely to move the same punctuation elsewhere.
 
 |          |          |
 | -------- | -------- |
@@ -3368,7 +3204,7 @@ fn f(x: &Vec<Vec<Vec<i32>>>) {}
 
 Flag std `HashMap`/`HashSet` types and constructors that use the default SipHash hasher.
 
-> SipHash buys DoS resistance that trusted internal keys do not need — a fast hasher (foldhash/FxHash) is significantly quicker.
+> SipHash's DoS resistance may be unnecessary for trusted internal keys. Choose a faster hasher only after confirming keys cannot be attacker-controlled and hashing is material in the workload; otherwise keep the defensive default and scope or suppress the rule.
 
 |          |          |
 | -------- | -------- |
@@ -3692,7 +3528,7 @@ _ends with colon_
 
 Require a `# Errors` section on documented pub fns returning `Result`.
 
-> Callers need failure conditions listed; canonical docs put them under `# Errors`.
+> Callers of publishable packages need failure conditions listed; canonical docs put them under `# Errors`. Packages that explicitly set `publish = false` are treated as internal workspace implementation and skipped.
 
 |          |          |
 | -------- | -------- |
@@ -3918,13 +3754,6 @@ _assert macros count_
 pub fn f(x: u32, y: u32) { assert_eq!(x, y, "mismatch"); }
 ```
 
-_unreachable counts_
-
-```rust
-/// Dispatches.
-pub fn f(x: bool) { if x { unreachable!(); } }
-```
-
 _impl fn with unwrap and no Panics section_
 
 ```rust
@@ -3958,6 +3787,21 @@ _documented fn without panic sources_
 ```rust
 /// Adds one.
 pub fn f(x: u32) -> u32 { x.saturating_add(1) }
+```
+
+_unreachable counts_
+
+```rust
+/// Dispatches.
+pub fn f(x: bool) { if x { unreachable!(); } }
+```
+
+_doc-hidden support API_
+
+```rust
+/// Test helper.
+#[doc(hidden)]
+pub fn f(x: Option<u32>) -> u32 { x.expect("fixture invariant") }
 ```
 
 _debug_assert does not count_
@@ -4211,9 +4055,9 @@ mod tests {
 
 ### rust_duplicate_strings
 
-Find long string literals repeated across files; full-workspace runs are authoritative.
+Find long string literals repeated throughout production source; full-workspace runs are authoritative.
 
-> Repeated long literals should have one named source of truth or a shared fixture.
+> Repeated long literals may represent one value that can drift. Extract a constant or shared fixture only when the occurrences have the same meaning; tune or suppress the rule when equal text is coincidental rather than inventing a false abstraction.
 
 |                        |                   |
 | ---------------------- | ----------------- |
@@ -4247,6 +4091,34 @@ _short strings are exempt_
 
 ```rust
 const A: &str = "short"; const B: &str = "short"; const C: &str = "short";
+```
+
+_lint reasons are metadata, not shareable values_
+
+```rust
+#[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn a() {}
+#[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn b() {}
+#[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn c() {}
+```
+
+_lint reasons inside macro definitions remain metadata_
+
+```rust
+macro_rules! a { () => { #[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn a() {} } }
+macro_rules! b { () => { #[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn b() {} } }
+macro_rules! c { () => { #[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn c() {} } }
+```
+
+_strings in tests are fixtures_
+
+```rust
+#[cfg(test)] mod tests { const A: &str = "a deliberately long repeated fixture string value"; const B: &str = "a deliberately long repeated fixture string value"; const C: &str = "a deliberately long repeated fixture string value"; }
+```
+
+_strings in Rulewright test registration macros are fixtures_
+
+```rust
+rulewright::rulewright_toml_test_at!("a deliberately long repeated fixture path value", check, { let _ = "a deliberately long repeated fixture path value"; let _ = "a deliberately long repeated fixture path value"; });
 ```
 
 ### rust_duplicate_words
@@ -4703,14 +4575,15 @@ mod tests {
 
 Flag `#[allow(...)]` in hand-written code — use `#[expect(..., reason = "...")]` instead.
 
-> #[expect] warns when the suppressed lint no longer fires, preventing stale suppressions from accumulating; #[allow] silences forever (clippy analogue: allow_attributes).
+> #[expect] warns when the suppressed lint no longer fires, preventing stale suppressions from accumulating; #[allow] silences forever. Add a lint to allowed_lints only when macro expansion makes #[expect] unusable.
 
-|          |           |
-| -------- | --------- |
-| Severity | medium    |
-| Type     | rust-line |
-| Enabled  | yes       |
-| Fixable  | no        |
+|                      |                        |
+| -------------------- | ---------------------- |
+| Severity             | medium                 |
+| Type                 | rust-line              |
+| Enabled              | yes                    |
+| Fixable              | no                     |
+| Param: allowed_lints | [String], default = [] |
 
 **Bad (triggers violation):**
 
@@ -5214,9 +5087,9 @@ _dotted names are not sentence ends_
 
 ### rust_floating_point_eq
 
-Flag direct `==`/`!=` comparison on `f32`/`f64` values.
+Flag direct nonzero `==`/`!=` comparison on `f32`/`f64` values for review.
 
-> Floating-point equality is unreliable due to rounding. Use an epsilon comparison or relative tolerance instead.
+> Computed floating-point values usually need absolute or relative tolerance. Exact zero is a useful structural and sentinel check; keep other exact equality only when the domain invariant genuinely requires it.
 
 |          |          |
 | -------- | -------- |
@@ -5245,34 +5118,16 @@ _f64 not-equal_
 fn f(a: f64, b: f64) -> bool { a != b }
 ```
 
-_compare float to literal zero_
-
-```rust
-fn f(a: f64) -> bool { a == 0.0 }
-```
-
-_local float binding equality_
-
-```rust
-fn f() -> bool { let x: f64 = 1.0; x == 0.0 }
-```
-
-_local float literal equality_
-
-```rust
-fn f() -> bool { let x = 1.0; x == 0.0 }
-```
-
-_left-hand-side float literal_
-
-```rust
-fn f(a: f64) -> bool { 0.0 == a }
-```
-
 _cast-to-float comparison_
 
 ```rust
 fn f(b: i32) -> bool { b as f64 == 0 }
+```
+
+_compare float to nonzero literal_
+
+```rust
+fn f(a: f64) -> bool { a == 1.5 }
 ```
 
 _float equality in impl method_
@@ -5302,6 +5157,36 @@ _float eq in test module_
 mod tests {
     fn t(a: f64, b: f64) -> bool { a == b }
 }
+```
+
+_compare float to literal zero_
+
+```rust
+fn f(a: f64) -> bool { a == 0.0 }
+```
+
+_local float binding equality_
+
+```rust
+fn f() -> bool { let x: f64 = 1.0; x == 0.0 }
+```
+
+_local float literal equality_
+
+```rust
+fn f() -> bool { let x = 1.0; x == 0.0 }
+```
+
+_left-hand-side float literal_
+
+```rust
+fn f(a: f64) -> bool { 0.0 == a }
+```
+
+_compare float to negative zero_
+
+```rust
+fn f(a: f64) -> bool { a != -0.0 }
 ```
 
 _integer not-equal is fine_
@@ -5573,9 +5458,9 @@ mod tests {
 
 ### rust_getter_prefix
 
-Flag methods named `get_something` — Rust getters are named after the field (C-GETTER).
+Flag receiver-only accessor methods named `get_something` — Rust getters are named after the field (C-GETTER).
 
-> The `get_` prefix is noise: the std convention is `fn name(&self)`, with `get`/`get_mut` reserved for keyed or checked access.
+> The `get_` prefix is noise on a zero-argument accessor: the std convention is `fn name(&self)`. Methods that accept a key, query, callback, or other argument are operations rather than simple getters and are left alone.
 
 |          |          |
 | -------- | -------- |
@@ -5653,6 +5538,42 @@ _associated fn without receiver_
 struct S;
 impl S {
     fn get_default() -> S { S }
+}
+```
+
+_keyed lookup method_
+
+```rust
+struct S;
+impl S {
+    fn get_name(&self, id: u32) -> &str { todo!() }
+}
+```
+
+_builder setter_
+
+```rust
+struct S;
+impl S {
+    fn get_name(self, callback: impl Fn()) -> Self { self }
+}
+```
+
+_async retrieval method_
+
+```rust
+struct S;
+impl S {
+    async fn get_name(&self) -> String { todo!() }
+}
+```
+
+_trait implementation method_
+
+```rust
+struct S;
+impl External for S {
+    fn get_name(&self) -> &str { "name" }
 }
 ```
 
@@ -5756,7 +5677,7 @@ mod tests {
 
 Flag `static` items with interior mutability and all `thread_local!` state.
 
-> Mutable globals are secretly duplicated across linked crate versions and break test isolation; perf-only caches need a #rw suppression with reason.
+> Mutable globals are duplicated across linked crate versions and break test isolation. Move state behind an owned context when behavior depends on it; a bounded process-wide cache may instead be suppressed with a reason describing its lifetime and synchronization.
 
 |          |          |
 | -------- | -------- |
@@ -5824,16 +5745,16 @@ mod tests {
 
 ### rust_hardcoded_url
 
-Flag hardcoded URLs in source code (should use config/env).
+Flag URL-valued string literals compiled into source code (should use config/env).
 
-> Hardcoded URLs break when environments change. Use configuration or environment variables for host-specific URLs.
+> Environment-specific service URLs should not be compiled into behavior. Read hosts from configuration or inject them at the boundary; prose that merely mentions a URL and bare protocol syntax are not service endpoints. Stable URLs used as intentional identifiers may be scoped out with their purpose.
 
-|          |           |
-| -------- | --------- |
-| Severity | medium    |
-| Type     | rust-line |
-| Enabled  | yes       |
-| Fixable  | no        |
+|          |          |
+| -------- | -------- |
+| Severity | medium   |
+| Type     | rust-ast |
+| Enabled  | yes      |
+| Fixable  | no       |
 
 **Bad (triggers violation):**
 
@@ -5847,6 +5768,18 @@ _hardcoded http URL_
 
 ```rust
 fn f() { let url = "http://localhost:3000"; }
+```
+
+_URL passed to a call before string matching_
+
+```rust
+fn f() { let _ = send("https://api.example.com").contains("ok"); }
+```
+
+_URL-valued format string_
+
+```rust
+fn f() { let _ = format!("https://api.example.com/{path}"); }
 ```
 
 **Good (passes):**
@@ -5867,6 +5800,48 @@ _URL in regular comment_
 
 ```rust
 // Reference: https://example.com/spec
+```
+
+_URL mentioned in a diagnostic_
+
+```rust
+fn f() { eprintln!("See https://example.com/help"); }
+```
+
+_URL embedded in generated markup_
+
+```rust
+fn f() { let badge = r#"<a href="https://example.com">help</a>"#; }
+```
+
+_scheme used as protocol syntax_
+
+```rust
+fn f(url: &str) { let _ = url.strip_prefix("https://"); }
+```
+
+_URL prefix used as parser syntax_
+
+```rust
+fn f(url: &str) { let _ = url.strip_prefix("https://example.com/"); }
+```
+
+_named stable URL_
+
+```rust
+const PROJECT_SITE: &str = "https://example.com";
+```
+
+_configuration fallback_
+
+```rust
+fn f(config: &Config) { let url = config.get_or("API_URL", "https://api.example.com"); }
+```
+
+_URL in doc attribute_
+
+```rust
+#[doc = "See https://example.com/help"] fn f() {}
 ```
 
 ### rust_impl_into_for_owned
@@ -6130,9 +6105,9 @@ impl Default for Item { fn default() -> Self { Self } }
 
 ### rust_inline_test_module_size
 
-Flag `#[cfg(test)] mod` blocks spanning more than threshold lines.
+Flag inline `#[cfg(test)] mod` blocks exceeding the configured nonblank-line threshold.
 
-> Oversized inline test modules drown the business logic in the same file; tests touching only public API are integration tests and belong under `tests/`.
+> Oversized inline test modules drown the implementation in the same file. Move private unit tests to a sibling `#[path]` module, or public-API tests to `tests/`.
 
 |                  |                    |
 | ---------------- | ------------------ |
@@ -6304,7 +6279,7 @@ enum Single { Only([u8; 1024]) }
 
 Flag functions with > threshold parameters.
 
-> Functions with many parameters are hard to call correctly. Group related params into a struct.
+> Functions with many parameters are hard to call correctly. Group parameters that form one domain concept, split unrelated responsibilities, or use named options; do not create a miscellaneous argument struct solely to satisfy the threshold.
 
 |                  |                  |
 | ---------------- | ---------------- |
@@ -6569,7 +6544,7 @@ info!("msg");
 
 Flag type definitions whose CamelCase name compounds more than threshold words.
 
-> Rust item names are short: `AppConfig` over `GlobalApplicationConfig`; long compounds hide the item's essence.
+> Long compound names can bury the item's essential role. Remove words already supplied by the module or type context, but keep enough domain meaning to avoid vague names and collisions; suppress a deliberately disambiguated public name rather than weakening the API.
 
 |                  |                  |
 | ---------------- | ---------------- |
@@ -6712,7 +6687,7 @@ mod tests {
 
 Flag `as` casts to types that lose precision (`f32`, `u8`, `u16`, `i8`, `i16`).
 
-> Casting to a smaller type (u64 as u8) silently truncates. Use try_into() to catch overflow at runtime.
+> Casting to a smaller integer silently truncates, so use `TryFrom` or byte-level extraction. Float narrowing has no fallible standard conversion: centralize it in a named policy helper with bounds or rounding behavior, and document the deliberate Clippy cast expectation there instead of scattering casts.
 
 |          |          |
 | -------- | -------- |
@@ -6768,6 +6743,13 @@ _cast in test module_
 mod tests {
     fn f() { let x = 42u64 as u8; }
 }
+```
+
+_documented conversion policy helper_
+
+```rust
+#[expect(clippy::cast_possible_truncation, reason = "wire payload deliberately stores f32")]
+fn payload(value: f64) -> f32 { value as f32 }
 ```
 
 ### rust_macro_hidden_items
@@ -6857,75 +6839,70 @@ _opener in comment_
 
 ### rust_magic_numbers
 
-Flag numeric literals outside the configured allowlist for review.
+Flag numeric values repeated within one function or module scope.
 
-> Unnamed numeric literals can obscure intent. Use a named constant when its name explains the value; otherwise tune the allowlist or scope to match the project's policy.
+> Repeated unexplained values often represent one concept worth naming. One-off literals are left alone because extracting them commonly adds indirection without meaning. Do not hide literals behind a macro; either name a real shared concept or explain why the repetitions are unrelated.
 
-|                |                                              |
-| -------------- | -------------------------------------------- |
-| Severity       | low                                          |
-| Type           | rust-ast                                     |
-| Enabled        | no                                           |
-| Fixable        | no                                           |
-| Param: allowed | [String], default = ["0", "1", "0.0", "1.0"] |
+|                        |                                              |
+| ---------------------- | -------------------------------------------- |
+| Severity               | low                                          |
+| Type                   | rust-ast                                     |
+| Enabled                | no                                           |
+| Fixable                | no                                           |
+| Param: allowed         | [String], default = ["0", "1", "0.0", "1.0"] |
+| Param: min_occurrences | i64, default = 3                             |
 
 **Bad (triggers violation):**
 
-_magic number in function_
+_repeated small integer still needs one shared concept_
+
+```rust
+fn f() { let values = [2, 2, 2]; }
+```
+
+_repeated unexplained value_
+
+```rust
+fn f() { let a = 42; let b = 42; let c = 42; }
+```
+
+_repeated float literal_
+
+```rust
+fn f() { let a = 3.14; let b = 3.14; let c = 3.14; }
+```
+
+_repeated negative literal_
+
+```rust
+fn f() { let a = -42; let b = -42; let c = -42; }
+```
+
+_repeated negative one is not specially exempt_
+
+```rust
+fn f() { let a = -1; let b = -1; let c = -1; }
+```
+
+_equivalent integer spellings share a value_
+
+```rust
+fn f() { let a = 255; let b = 0xff; let c = 255; }
+```
+
+_same record field repeated across constructions shares a concept_
+
+```rust
+fn f() { let _ = A { limit: 42 }; let _ = A { limit: 42 }; let _ = A { limit: 42 }; }
+```
+
+**Good (passes):**
+
+_one-off numeric literal does not justify a constant_
 
 ```rust
 fn f() { let x = 42; }
 ```
-
-_power of two is magic_
-
-```rust
-fn f() { let x = 256; }
-```
-
-_small int is magic_
-
-```rust
-fn f() { let x = 2; }
-```
-
-_round number is magic_
-
-```rust
-fn f() { let x = 100; }
-```
-
-_float magic number_
-
-```rust
-fn f() { let x = 3.14; }
-```
-
-_negative magic number_
-
-```rust
-fn f() { let x = -42; }
-```
-
-_underscored literal is magic_
-
-```rust
-fn f() { let x = 1_000; }
-```
-
-_hex literal is magic_
-
-```rust
-fn f() { let x = 0xff; }
-```
-
-_literal in match arm body remains magic_
-
-```rust
-fn f(x: i32) -> i32 { match x { 0 => 42, _ => 1 } }
-```
-
-**Good (passes):**
 
 _zero allowed by default_
 
@@ -6937,6 +6914,18 @@ _one allowed by default_
 
 ```rust
 fn f() { let x = 1; }
+```
+
+_two occurrences stay below the default threshold_
+
+```rust
+fn f() { let a = 42; let b = 42; }
+```
+
+_same value in separate functions is not conflated_
+
+```rust
+fn first() { let a = 42; let b = 42; } fn second() { let c = 42; let d = 42; }
 ```
 
 _const passes_
@@ -6972,7 +6961,7 @@ mod tests {
 }
 ```
 
-_negative one allowed by default_
+_one-off negative one stays below the threshold_
 
 ```rust
 fn f() { let x = -1; }
@@ -6988,6 +6977,36 @@ _negative integer match pattern is not an expression_
 
 ```rust
 fn f(x: i32) { match x { -42 => {}, _ => {} } }
+```
+
+_one-off literal in a match arm does not justify a constant_
+
+```rust
+fn f(x: i32) -> i32 { match x { 0 => 42, _ => 1 } }
+```
+
+_sequence window width is API structure_
+
+```rust
+fn f(values: &[u8]) { let _ = values.windows(2); let _ = values.chunks_exact(2); let _ = values.rchunks(2); }
+```
+
+_array lengths describe type structure_
+
+```rust
+fn f(values: [f64; 2]) -> ([f64; 2], [f64; 2]) { (values, values) }
+```
+
+_arithmetic coefficients stay readable in their formula_
+
+```rust
+fn f(x: f64, y: f64) -> f64 { 0.5 * x + 0.5 * y + 0.5 * (x + y) }
+```
+
+_equal defaults in unrelated record fields are separate concepts_
+
+```rust
+fn f() -> Limits { Limits { nodes: 42, edges: 42, bytes: 42 } }
 ```
 
 ### rust_manual_async_fn
@@ -7127,9 +7146,9 @@ _test error_
 
 ### rust_map_err_pure_wrap
 
-Flag `.map_err(...)` that only wraps the error in another type — implement `From` and let `?` convert.
+Flag `.map_err(Type::from)` when `?` can already perform the same declared conversion.
 
-> Context-free error wrapping repeated at every call site obscures the happy path; a single From impl gives the conversion to every ? for free.
+> Repeating an existing From conversion obscures the happy path; use ? and let the declared conversion run automatically. Enum variants are not flagged because orphan rules or distinct semantic context may make a From impl invalid.
 
 |          |          |
 | -------- | -------- |
@@ -7140,13 +7159,33 @@ Flag `.map_err(...)` that only wraps the error in another type — implement `Fr
 
 **Bad (triggers violation):**
 
+_explicit conversion immediately propagated_
+
+```rust
+fn f(r: Result<u8, IoError>) -> Result<(), AppError> { let _ = r.map_err(<AppError as From<IoError>>::from)?; Ok(()) }
+```
+
+**Good (passes):**
+
 _bare variant path_
 
 ```rust
 fn f(r: Result<u8, IoError>) -> Result<u8, AppError> { r.map_err(AppError::Io) }
 ```
 
-_bare from path_
+_inherent conversion does not prove the propagation conversion_
+
+```rust
+fn f(r: Result<u8, A>) -> Result<(), C> { let _ = r.map_err(B::from)?; Ok(()) }
+```
+
+_mapped result retained as a value_
+
+```rust
+fn f(r: Result<u8, IoError>) -> bool { let normalized = r.map_err(AppError::from); normalized.is_ok() }
+```
+
+_mapped result returned without immediate propagation_
 
 ```rust
 fn f(r: Result<u8, IoError>) -> Result<u8, AppError> { r.map_err(AppError::from) }
@@ -7157,8 +7196,6 @@ _closure wrapping only the error_
 ```rust
 fn f(r: Result<u8, IoError>) -> Result<u8, AppError> { r.map_err(|e| AppError::Io(e)) }
 ```
-
-**Good (passes):**
 
 _closure adding context arguments_
 
@@ -7205,96 +7242,104 @@ mod tests {
 }
 ```
 
+_trait implementation controls the error type_
+
+```rust
+struct Decoder;
+impl Decode for Decoder { fn decode(r: Result<u8, SourceError>) -> Result<u8, D::Error> { r.map_err(D::Error::custom) } }
+```
+
 ### rust_match_layout
 
-Keep match arms and `matches!` patterns visually structured.
+Keep one-line match arms compact, collapse empty arm blocks, and separate every arm when any body is multiline.
 
-> Complex pattern alternatives and dense multiline arms hide control flow; explicit match arms and whitespace make cases scannable.
+> Uniform one-line arms are easiest to scan as a compact list, empty bodies should be `{}`, and a multiline body needs one blank line between every arm so the cases remain visually distinct.
 
-|               |                                                                  |
-| ------------- | ---------------------------------------------------------------- |
-| Severity      | low                                                              |
-| Type          | rust-ast                                                         |
-| Enabled       | yes                                                              |
-| Fixable       | no                                                               |
-| Param: checks | [String], default = ["complex-matches", "multiline-arm-spacing"] |
+|          |          |
+| -------- | -------- |
+| Severity | low      |
+| Type     | rust-ast |
+| Enabled  | yes      |
+| Fixable  | yes      |
 
 **Bad (triggers violation):**
 
-_complex multiline matches macro_
+_one-line arms with unnecessary gaps_
 
 ```rust
-fn valid(pair: (Check, Fix)) -> bool {
-    matches!(
-        pair,
-        (
-            Check::Line,
-            None | Some(Fix::Line),
-        )
-            | (Check::Ast, Some(Fix::Ast))
-            | (Check::Toml, Some(Fix::Toml))
-    )
+fn value(input: Input) -> usize {
+    match input {
+        Input::One => 1,
+
+        Input::Two => 2,
+
+        Input::Three => 3,
+    }
 }
 ```
 
-_adjacent multiline match arms_
+_one multiline body makes the whole match spacious_
 
 ```rust
-fn run(value: Value) {
-    match value {
-        Value::One => {
+fn run(input: Input) {
+    match input {
+        Input::One => {
             prepare_one();
-            one();
             finish_one();
         }
-        Value::Two => {
-            prepare_two();
-            two();
-            finish_two();
+        Input::Two => finish(),
+        Input::Three => finish_three(),
+    }
+}
+```
+
+_multiline match with inconsistent separation_
+
+```rust
+fn run(input: Input) {
+    match input {
+        Input::One => {
+            one();
         }
+
+        Input::Two => two(),
+        Input::Three => three(),
     }
 }
 ```
 
 **Good (passes):**
 
-_simple matches macro_
-
-```rust
-fn valid(value: Value) -> bool { matches!(value, Value::One | Value::Two) }
-```
-
-_separated multiline match arms_
-
-```rust
-fn run(value: Value) {
-    match value {
-        Value::One => {
-            prepare_one();
-            one();
-            finish_one();
-        }
-
-        Value::Two => {
-            prepare_two();
-            two();
-            finish_two();
-        }
-    }
-}
-```
-
-_compact arms_
+_small compact match_
 
 ```rust
 fn value(input: bool) -> usize { match input { true => 1, false => 0 } }
 ```
 
+_large match with compact one-line arms_
+
+```rust
+fn value(input: Input) -> usize {
+    match input {
+        Input::One => 1,
+        Input::Two => 2,
+        Input::Three => 3,
+        Input::Four => 4,
+        Input::Five => 5,
+        Input::Six => 6,
+        Input::Seven => 7,
+        Input::Eight => 8,
+        Input::Nine => 9,
+        Input::Ten => 10,
+    }
+}
+```
+
 ### rust_max_fn_lines
 
-Flag functions longer than threshold lines.
+Flag functions longer than the configured nonblank-line threshold.
 
-> Functions over 150 lines are hard to understand, test, and review. Break them into smaller focused functions.
+> Very long functions are hard to understand, test, and review. Extract cohesive operations with honest names or split distinct responsibilities; do not create forwarding helpers that merely move arbitrary line ranges, and tune the threshold when the domain is clearer as one procedure.
 
 |                  |                    |
 | ---------------- | ------------------ |
@@ -7316,7 +7361,7 @@ fn f() { let x = 1; }
 
 Flag nesting depth > threshold levels.
 
-> Deeply nested code is hard to follow. Use early returns, guard clauses, or extract helper functions.
+> Deeply nested code hides the active conditions. Prefer early returns, guard clauses, or a helper for a coherent sub-operation; do not invert straightforward control flow or extract arbitrary blocks solely to lower the measured depth.
 
 |                  |                  |
 | ---------------- | ---------------- |
@@ -7379,7 +7424,7 @@ fn f() {
 
 Require `LEAK` or `SAFETY` comment on `std::mem::forget()` calls.
 
-> mem::forget permanently leaks memory. A justification comment proves the leak is intentional, not a bug.
+> mem::forget skips destruction permanently. Prefer explicit ownership transfer or ManuallyDrop; when forgetting is required by an external ownership contract, document who owns the resource and why no destructor may run.
 
 |          |          |
 | -------- | -------- |
@@ -7435,7 +7480,7 @@ fn f() { cache::forget(key); }
 
 Require a message argument on `assert!`, `assert_eq!`, `assert_ne!`.
 
-> Assertions without messages produce opaque failures. A message explains what invariant was violated.
+> Assertions without messages produce opaque failures. State the expected invariant and include the values needed to diagnose it; a message that merely paraphrases the condition adds no useful context.
 
 |          |          |
 | -------- | -------- |
@@ -7495,9 +7540,9 @@ mod tests {
 
 ### rust_missing_capacity
 
-Flag collections built with `new()`/`default()` then grown inside a loop over a sized source.
+Flag collections built with `new()`/`default()` then unconditionally grown inside a loop over a sized source.
 
-> When the final size is knowable at construction, with_capacity or collect avoids repeated reallocation and copying.
+> When every source item grows the collection, the final size is knowable and with_capacity or collect avoids repeated reallocation. Conditional output may be sparse and is deliberately excluded.
 
 |          |          |
 | -------- | -------- |
@@ -7532,13 +7577,19 @@ _annotated Default::default() filled in sized loop_
 fn f(xs: &[u32]) { let mut out: Vec<u32> = Default::default(); for x in xs.iter() { out.push(*x); } }
 ```
 
-_push nested deeper in loop body_
+**Good (passes):**
+
+_conditionally sparse output does not imply source-sized capacity_
 
 ```rust
 fn f(xs: &[u32]) { let mut out = Vec::new(); for x in xs.iter() { if *x > 0 { out.push(*x); } } }
 ```
 
-**Good (passes):**
+_match-selected output does not imply source-sized capacity_
+
+```rust
+fn f(xs: &[Option<u32>]) { let mut out = Vec::new(); for x in xs.iter() { if let Some(x) = x { out.push(*x); } } }
+```
 
 _with_capacity already used_
 
@@ -7696,6 +7747,12 @@ _function ref_
 fn f() { let _ = Ok::<i32, String>(1).map_err(String::from); }
 ```
 
+_documented boundary error normalization_
+
+```rust
+#[expect(clippy::map_err_ignore, reason = "wire contract exposes stable error categories")] fn f() { let _ = Ok::<i32, i32>(1).map_err(|_| "bad"); }
+```
+
 _discard in test module_
 
 ```rust
@@ -7762,9 +7819,9 @@ mod writer;
 
 ### rust_module_docs
 
-Require `//!` module docs at the top of `lib.rs` and `mod.rs` files.
+Require `//!` crate docs at the top of Rust library roots.
 
-> Module docs are the entry point for API navigation; each module file should say what it contains.
+> Library crate docs are the public entry point for API navigation. Private module files are deliberately excluded.
 
 |          |           |
 | -------- | --------- |
@@ -7841,85 +7898,11 @@ _blank lines before module docs_
 pub fn f() {}
 ```
 
-### rust_module_prefix_in_name
-
-Flag pub type definitions whose name repeats the module name as a prefix (`FooId` in `foo.rs`).
-
-> Module-qualified APIs can avoid repeating the module in every public type. Flat re-exports and collision-prone APIs are intentional exceptions because this syntax-only rule cannot inspect the final exported namespace.
-
-|          |          |
-| -------- | -------- |
-| Severity | low      |
-| Type     | rust-ast |
-| Enabled  | no       |
-| Fixable  | no       |
-
-**Bad (triggers violation):**
-
-_pub struct repeats module name_
-
-```rust
-pub struct FooId;
-```
-
-_pub enum repeats module name_
-
-```rust
-pub enum FooKind { A }
-```
-
-_pub trait repeats module name_
-
-```rust
-pub trait FooLike {}
-```
-
-_pub type alias repeats module name_
-
-```rust
-pub type FooResult = ();
-```
-
-**Good (passes):**
-
-_name equal to module name_
-
-```rust
-pub struct Foo;
-```
-
-_prefix is not a whole segment_
-
-```rust
-pub struct Food;
-```
-
-_unrelated name_
-
-```rust
-pub struct Bar;
-```
-
-_private item exempt_
-
-```rust
-struct FooId;
-```
-
-_prefixed type in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    pub struct FooFixture;
-}
-```
-
 ### rust_multiple_inherent_impl
 
 Flag multiple `impl Foo` blocks for the same type in one file.
 
-> Split impl blocks for the same type scatter related methods. Keep them in one block for discoverability.
+> Split impl blocks for the same type can scatter related methods. Merge blocks that form one readable API inventory; suppress the rule when cfg boundaries, generated code, or a deliberate large-module organization makes separation clearer.
 
 |          |          |
 | -------- | -------- |
@@ -8179,9 +8162,9 @@ mod tests {
 
 ### rust_newtype_pub_field
 
-Flag pub single-field structs exposing a pub primitive/`&str`/`String` field.
+Flag public weak-typed newtype fields only when the type also exposes fallible construction.
 
-> A public weak-typed field bypasses any constructor-enforced invariant; make the field private and construct fallibly.
+> A public field bypasses validation when the type's own constructor returns Result or Option. Make that field private; plain transparent carriers without a validation contract are left alone.
 
 |          |          |
 | -------- | -------- |
@@ -8192,31 +8175,55 @@ Flag pub single-field structs exposing a pub primitive/`&str`/`String` field.
 
 **Bad (triggers violation):**
 
-_pub tuple newtype with pub integer_
+_public field bypasses fallible constructor_
 
 ```rust
-pub struct UserId(pub u64);
-```
-
-_pub tuple newtype with pub String_
-
-```rust
-pub struct Name(pub String);
+pub struct UserId(pub u64); impl UserId { pub fn try_new(raw: u64) -> Result<Self, Error> { Ok(Self(raw)) } }
 ```
 
 _pub tuple newtype with pub str ref_
 
 ```rust
-pub struct Label<'a>(pub &'a str);
+pub struct Label<'a>(pub &'a str); impl Label<'_> { pub fn parse(raw: &str) -> Option<Label<'_>> { Some(Label(raw)) } }
 ```
 
 _pub named newtype with pub field_
 
 ```rust
-pub struct Port { pub value: u16 }
+pub struct Port { pub value: u16 } impl Port { pub fn new(value: u16) -> Result<Self, Error> { Ok(Self { value }) } }
 ```
 
 **Good (passes):**
+
+_plain transparent integer carrier_
+
+```rust
+pub struct UserId(pub u64);
+```
+
+_plain transparent string carrier_
+
+```rust
+pub struct Name(pub String);
+```
+
+_unrelated fallible associated function_
+
+```rust
+pub struct Name(pub String); impl Name { fn lookup() -> Option<String> { None } }
+```
+
+_public fallible associated function returning another type_
+
+```rust
+pub struct Name(pub String); impl Name { pub fn lookup() -> Result<String, Error> { todo!() } }
+```
+
+_same-named type in another module owns the constructor_
+
+```rust
+pub mod one { pub struct Id(pub u64); } pub mod two { pub struct Id; impl Id { pub fn parse() -> Result<Self, ()> { Ok(Self) } } }
+```
 
 _private field_
 
@@ -8314,9 +8321,9 @@ pub mod parsing;
 
 ### rust_non_exhaustive_on_public
 
-Flag public enums without `#[non_exhaustive]` — prevents breaking changes when adding variants.
+Flag `pub` enums without `#[non_exhaustive]` when downstream variants should remain extensible.
 
-> Adding a variant to a public enum is a breaking change. #[non_exhaustive] lets you add variants without a major version bump.
+> Adding a variant can break downstream exhaustive matches. Use `#[non_exhaustive]` for externally reachable enums in publishable packages whose variant set may grow; packages that explicitly set `publish = false` are skipped. Keep the rule disabled or scoped away for private-module enums and deliberately closed protocol, state-machine, or schema vocabularies. Rulewright recognizes syntax-level `pub` but does not resolve re-export visibility.
 
 |          |          |
 | -------- | -------- |
@@ -8586,7 +8593,7 @@ mod tests {
 
 Require configurable blank-line boundaries between functions and distinct statement groups.
 
-> Consistent vertical separation makes functions, control flow, setup runs, and tail values easier to scan.
+> Consistent vertical separation makes functions, control flow, logical setup stages, and tail values easier to scan. Keep attributes, suppression directives, safety comments, and invariant explanations attached to the code they justify instead of inserting whitespace through those relationships.
 
 |                   |                                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------------- |
@@ -8697,7 +8704,7 @@ _directive stays attached to multiline control_
 ```rust
 fn run(flag: bool) {
     let value = String::new();
-    // #rw(rust_clone_in_loop) bounded control path
+    // #rw(rust_panic) bounded control path
     if flag {
         consume(value.clone());
     }
@@ -8709,7 +8716,7 @@ _directive stays attached to tail expression_
 ```rust
 fn value() -> usize {
     let value = 1;
-    // #rw(rust_clone_in_loop) representative fixture
+    // #rw(rust_panic) representative fixture
     value
 }
 ```
@@ -8719,7 +8726,7 @@ _block directive stays attached to loop_
 ```rust
 fn run(values: &[String]) {
     let mut copies = Vec::new();
-    // #rw(block: rust_clone_in_loop) bounded fixture
+    // #rw(block: rust_panic) bounded fixture
     for value in values {
         copies.push(value.clone());
     }
@@ -8753,6 +8760,15 @@ fn value() -> usize {
     let value = 1;
 
     value
+}
+```
+
+_effect followed by tail expression stays compact_
+
+```rust
+fn value() -> Result<(), Error> {
+    verify_state()?;
+    finish()
 }
 ```
 
@@ -8807,6 +8823,22 @@ fn run(flag: bool) {
 
     loop {
         break;
+    }
+}
+```
+
+_block-like control expression separates let runs_
+
+```rust
+fn run(mut bits: u32) {
+    while bits != 0 {
+        let index = bits.trailing_zeros();
+
+        if index > 10 {
+            observe(index);
+        }
+
+        bits &= bits - 1;
     }
 }
 ```
@@ -9039,7 +9071,7 @@ mod tests {
 
 Find maximal parameter groups repeated across functions; full-workspace runs are authoritative.
 
-> Parameters that repeatedly travel together usually represent one missing domain value object.
+> Parameters that repeatedly travel together may represent one missing domain value. Group them only when the new type has a coherent meaning and useful invariants; do not create a bag-of-fields struct merely to reduce the count.
 
 |                  |                  |
 | ---------------- | ---------------- |
@@ -9174,7 +9206,7 @@ mod tests {
 
 Ban `println!`/`eprintln!`/`print!`/`eprint!` outside test code.
 
-> Console printing bypasses structured logging. Use tracing or the output module for consistent, filterable output.
+> Console printing bypasses structured logging in libraries and services. Use tracing or an explicit output abstraction there; scope CLI output, examples, and benchmarks out of this policy instead of deleting observable behavior.
 
 |          |          |
 | -------- | -------- |
@@ -9305,7 +9337,7 @@ fn helper(input: String) -> String { input }
 
 Require doc comments on public items.
 
-> Undocumented public items force users to read source code. Doc comments generate searchable API documentation.
+> Undocumented public items force users to read source code. Doc comments generate searchable API documentation for publishable packages; packages that explicitly set `publish = false` are treated as internal workspace implementation and skipped.
 
 |          |          |
 | -------- | -------- |
@@ -9987,7 +10019,7 @@ mod tests {
 
 Flag direct self-recursion (stack overflow risk, especially in WASM).
 
-> Direct recursion risks stack overflow, especially in WASM with its fixed 1MB stack. Use iteration or trampolining.
+> Direct recursion risks stack overflow, especially in WASM with a fixed stack. Use iteration or trampolining when that preserves the function's contracts; bounded structural recursion may instead be suppressed with a reason that names the enforced depth limit.
 
 |          |          |
 | -------- | -------- |
@@ -10009,6 +10041,18 @@ _Self:: recursion_
 ```rust
 struct S;
 impl S { fn go(&self) { Self::go(self); } }
+```
+
+_method recursion through self_
+
+```rust
+struct S; impl S { fn go(&self) { self.go(); } }
+```
+
+_bounded structural recursion still needs an explicit suppression_
+
+```rust
+fn visit(node: &Node, depth: usize, max_depth: usize) { if depth > max_depth { return; } for child in node.children() { visit(child, depth + 1, max_depth); } }
 ```
 
 **Good (passes):**
@@ -10053,6 +10097,18 @@ _qualified trait delegation_
 
 ```rust
 struct S; trait T { fn go(); } impl T for S { fn go() { <u8 as T>::go(); } }
+```
+
+_method calling a free function with the same name_
+
+```rust
+fn quote(_: &str) {} struct S; impl S { fn quote(&self, text: &str) { quote(text); } }
+```
+
+_trait method forwarding to an inherent method_
+
+```rust
+struct Client; trait Remote { fn unlink(&self); } impl Remote for Client { fn unlink(&self) { self.unlink(); } }
 ```
 
 ### rust_redundant_field_names
@@ -10208,7 +10264,7 @@ use std::io;
 
 Flag `#[derive(Debug)]` on structs with sensitive fields like `password`.
 
-> Deriving Debug on types with passwords or tokens risks leaking secrets in logs and error messages.
+> Deriving Debug on types that actually contain credentials can leak them through logs and errors. Redact or implement Debug manually for real secrets; tune the sensitive-name list or suppress domain terms such as topology tokens rather than hiding useful non-secret diagnostics.
 
 |                       |                                                                                                                                                                |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -10218,6 +10274,7 @@ Flag `#[derive(Debug)]` on structs with sensitive fields like `password`.
 | Fixable               | no                                                                                                                                                             |
 | Param: markers        | [String], default = ["api_key", "authorization", "bearer", "credential", "credentials", "password", "passwd", "private_key", "secret", "signing_key", "token"] |
 | Param: allowed_fields | [String], default = []                                                                                                                                         |
+| Param: redacted_types | [String], default = ["Secret", "SecretBox", "SecretString", "SecretVec", "Sensitive"]                                                                          |
 
 **Bad (triggers violation):**
 
@@ -10240,6 +10297,13 @@ _Debug on struct with api_key field_
 ```rust
 #[derive(Debug)]
 struct Config { api_key: String }
+```
+
+_one redacted tuple member does not protect its siblings_
+
+```rust
+#[derive(Debug)]
+struct Config { token: (String, SecretString) }
 ```
 
 _Debug on struct with bearer field_
@@ -10271,6 +10335,13 @@ _no Debug with password field_
 struct Creds { password: String }
 ```
 
+_redacting sensitive wrapper_
+
+```rust
+#[derive(Debug)]
+struct Config { api_key: Sensitive<String>, token: Option<SecretString> }
+```
+
 _marker text inside an unrelated word_
 
 ```rust
@@ -10292,7 +10363,7 @@ mod tests {
 
 Find exact and near duplicate function bodies; full-workspace runs are authoritative.
 
-> Clone detection identifies behavior that should usually be shared behind one implementation.
+> Substantially identical functions may have drifted copies of one behavior. Share the implementation only when both functions must evolve together; keep coincidental similarity separate and suppress it with that reason.
 
 |                        |                   |
 | ---------------------- | ----------------- |
@@ -10326,67 +10397,6 @@ _short bodies are exempt_
 ```rust
 fn one() -> i32 { 1 }
 fn two() -> i32 { 1 }
-```
-
-### rust_similar_structs
-
-Find exact, near, and containment duplicate named-field structs; full-workspace runs are authoritative.
-
-> Structural duplication often signals a missing shared domain type; indexed candidate generation keeps the check scalable.
-
-|                        |                   |
-| ---------------------- | ----------------- |
-| Severity               | low               |
-| Type                   | rust-workspace    |
-| Enabled                | yes               |
-| Fixable                | no                |
-| Param: min_fields      | i64, default = 4  |
-| Param: jaccard_percent | i64, default = 80 |
-
-**Bad (triggers violation):**
-
-_exact twins_
-
-```rust
-struct One { a: u32, b: String, c: bool, d: f64 }
-struct Two { d: f64, c: bool, b: String, a: u32 }
-```
-
-_near twins_
-
-```rust
-struct One { a: u32, b: String, c: bool, d: f64 }
-struct Two { a: u32, b: String, c: bool, d: f64, e: usize }
-```
-
-_containment twins_
-
-```rust
-struct One { a: u32, b: String, c: bool, d: f64 }
-struct Two { a: u32, b: String, c: bool, d: f64, e: usize, f: usize }
-```
-
-**Good (passes):**
-
-_input twin is sanctioned_
-
-```rust
-struct Request { a: u32, b: String, c: bool, d: f64 }
-struct RequestInput { a: u32, b: String, c: bool, d: f64 }
-```
-
-_generic arity differs_
-
-```rust
-struct One<T> { a: u32, b: String, c: bool, d: T }
-struct Two<T, U> { a: u32, b: String, c: bool, d: T, marker: U }
-```
-
-_below threshold_
-
-```rust
-struct One { a: u32, b: String, c: bool }
-struct Two { a: u32, b: String, c: bool, d: f64 }
 ```
 
 ### rust_single_item_path
@@ -10939,7 +10949,7 @@ struct Failure;
 
 Require TODO/FIXME/HACK/XXX to have parenthesized context.
 
-> TODO without context (who, ticket, deadline) becomes permanent. Parenthesized context ensures accountability.
+> A bare TODO becomes permanent because nobody knows the intended follow-up. Add a real issue, owner, constraint, or removal condition in parentheses; do not invent placeholder metadata just to satisfy the syntax.
 
 |          |           |
 | -------- | --------- |
@@ -11002,9 +11012,9 @@ _tracked FIXME_
 
 ### rust_too_many_lines_in_file
 
-Flag files exceeding threshold lines.
+Flag files exceeding the configured nonblank-line threshold.
 
-> Files over 1500 lines are a sign that the module has too many responsibilities and should be split.
+> A very large file often contains several responsibilities. Split it along domain or ownership boundaries with clear module names; do not scatter one cohesive implementation across arbitrary numbered files, and tune the threshold when separation would make navigation worse.
 
 |                      |                     |
 | -------------------- | ------------------- |
@@ -11134,7 +11144,7 @@ mod tests {
 
 Flag `transmute` inside a safe `pub` fn.
 
-> A safe public signature promises soundness its transmuting body cannot guarantee — the prime unsoundness suspect.
+> A safe public signature must establish every invariant required by its transmute. Move the raw operation into a small private unsafe helper and validate the safe wrapper's inputs, or make the caller contract explicitly unsafe when validation is impossible.
 
 |          |          |
 | -------- | -------- |
@@ -11193,7 +11203,7 @@ mod tests {
 
 Require `SAFETY` comment on `std::mem::transmute` calls.
 
-> transmute reinterprets raw bytes and can cause UB if the types are incompatible. A SAFETY comment proves correctness.
+> transmute can violate size, validity, provenance, and lifetime rules. Prefer a checked conversion or dedicated pointer API; if transmute is necessary, document the exact invariants that make the source and destination representations valid.
 
 |          |          |
 | -------- | -------- |
@@ -11382,13 +11392,13 @@ pub mod h;
 
 Flag `container[expr]` indexing with non-literal indices.
 
-> Indexing with a variable panics on out-of-bounds. Prefer `.get()` when failure is possible. When an established invariant makes indexing correct, place a `// BOUNDS:` comment directly above it that names the concrete check or relationship; boilerplate comments do not make the code safer.
+> Indexing with a variable may panic on out-of-bounds. First make the relationship structural with iteration, `zip`, slices, or `.get()`/`.get_mut()`. A concrete `// BOUNDS:` comment is a last resort for an irreducible fixed-domain or performance invariant, not a mechanical way to silence the rule; one scope comment may cover related accesses, and stacked comments must each name the values and indices or ranges they justify.
 
 |          |          |
 | -------- | -------- |
 | Severity | low      |
 | Type     | rust-ast |
-| Enabled  | yes      |
+| Enabled  | no       |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -11397,6 +11407,37 @@ _variable index_
 
 ```rust
 fn f(v: Vec<i32>, i: usize) { let _ = v[i]; }
+```
+
+_generic BOUNDS comment does not document the invariant_
+
+```rust
+fn f(v: Vec<i32>, i: usize) {
+    // BOUNDS: checked above.
+    let _ = v[i];
+}
+```
+
+_detached BOUNDS comment does not document the operation_
+
+```rust
+fn f(v: Vec<i32>, i: usize) {
+    // BOUNDS: i is less than v.len().
+
+    let _ = v[i];
+}
+```
+
+_shadowed range binding does not prove the replacement index_
+
+```rust
+fn f(values: &[i32], supplied: usize) { for index in 0..values.len() { let index = supplied; let _ = values[index]; } }
+```
+
+_parallel collection is not proven by another collection range_
+
+```rust
+fn f(left: &[i32], right: &[i32]) { for index in 0..left.len() { let _ = right[index]; } }
 ```
 
 **Good (passes):**
@@ -11426,11 +11467,67 @@ fn f(v: Vec<i32>, i: usize) {
 }
 ```
 
+_index from matching length range_
+
+```rust
+fn f(values: &[i32]) { for index in 0..values.len() { let _ = values[index]; } }
+```
+
+_index from matching enumerate_
+
+```rust
+fn f(values: &[i32]) { for (index, _) in values.iter().enumerate() { let _ = values[index]; } }
+```
+
+_index guarded by matching while condition_
+
+```rust
+fn f(values: &[i32], mut index: usize) { while index < values.len() { let _ = values[index]; index += 1; } }
+```
+
+_successful binary search index_
+
+```rust
+fn f(values: &[i32]) { match values.binary_search(&4) { Ok(index) => { let _ = values[index]; }, Err(_) => {} } }
+```
+
+_cyclic offset from matching length range_
+
+```rust
+fn f(values: &[i32]) { for index in 0..values.len() { let _ = values[(index + 1) % values.len()]; } }
+```
+
+_bounded range iterator feeding a closure_
+
+```rust
+fn f(values: &[i32]) { let _ = (0..values.len()).find(|index| values[*index] == 4); }
+```
+
+_loop-level BOUNDS comment documents parallel collections once_
+
+```rust
+fn f(left: &[i32], right: &[i32]) {
+    // BOUNDS: left and right have equal lengths, so index from left is valid for right.
+    for (index, _) in left.iter().enumerate() { let _ = right[index]; }
+}
+```
+
+_block-level BOUNDS comment covers separated related accesses_
+
+```rust
+fn f(left: &[i32], right: &[i32], index: usize) {
+    // BOUNDS: index was checked against the equal lengths of left and right.
+    let _ = left[index];
+    observe();
+    let _ = right[index];
+}
+```
+
 ### rust_unnecessary_collect
 
 Flag `.collect().iter()` — remove the intermediate collection.
 
-> Collecting into a Vec just to iterate it again wastes an allocation. Chain the iterators directly.
+> Collecting into a Vec for one immediate pass usually wastes an allocation. Chain the iterators when evaluation order and borrowing remain correct; keep the collection when it establishes an ownership boundary, permits mutation, or is reused.
 
 |          |          |
 | -------- | -------- |
@@ -11454,6 +11551,12 @@ fn f() { (0..10).collect::<Vec<i32>>().into_iter().count(); }
 ```
 
 **Good (passes):**
+
+_set collect changes semantics_
+
+```rust
+fn f() { (0..10).collect::<HashSet<i32>>().into_iter().collect::<Vec<_>>(); }
+```
 
 _separate collect_
 
@@ -11480,7 +11583,7 @@ mod tests {
 
 Require `// SAFETY:` comment on `unsafe` blocks.
 
-> Every unsafe block must document why it is sound. Without a SAFETY comment, reviewers cannot verify correctness.
+> Every unsafe block must expose its proof obligation to reviewers. Put a SAFETY comment directly above it that names the concrete validity, aliasing, lifetime, or synchronization invariant; generic claims that the code is safe are not evidence.
 
 |          |          |
 | -------- | -------- |
@@ -11758,7 +11861,7 @@ fn f(x: u32) -> u32 { x }
 
 Ban `.unwrap()` in library code.
 
-> unwrap() in library code panics the caller with no context. Return Result or use expect() with a message.
+> unwrap() in library code panics the caller with no context. Propagate a real error when failure is possible; use expect() only for a locally established invariant and state that invariant in the message.
 
 |          |          |
 | -------- | -------- |
@@ -11888,6 +11991,12 @@ struct S(Vec<String>);
 ```
 
 **Good (passes):**
+
+_nested vectors mutated after construction_
+
+```rust
+struct S { grid: Vec<Vec<u8>> } impl S { fn push(&mut self, row: usize, value: u8) { self.grid.get_mut(row).unwrap().push(value); } }
+```
 
 _fully public field is user-visible_
 

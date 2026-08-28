@@ -95,6 +95,7 @@ fn returns_result_self(function: &ast::Fn, self_name: &str) -> bool {
                 matches!(name.text().as_str(), "Self") || name.text() == self_name
             })
         }
+
         _ => false,
     }
 }

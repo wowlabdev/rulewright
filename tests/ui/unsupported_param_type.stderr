@@ -1,0 +1,13 @@
+error: unsupported Rulewright parameter type in `enabled : bool = true`; supported types are `i64` and `[String]`
+  --> tests/ui/unsupported_param_type.rs:5:1
+   |
+ 5 | / rulewright::pack_line_rule!(
+ 6 | |     invalid_param_fixture,
+ 7 | |     "Invalid fixture rule.",
+ 8 | |     "Exercises the parameter diagnostic.",
+...  |
+12 | |     },
+13 | | );
+   | |_^
+   |
+   = note: this error originates in the macro `$crate::_param` which comes from the expansion of the macro `rulewright::pack_line_rule` (in Nightly builds, run with -Z macro-backtrace for more info)

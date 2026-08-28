@@ -47,7 +47,7 @@ const EXAMPLES: &[Example] = &[
 crate::line_rule!(
     todo,
     "Require TODO/FIXME/HACK/XXX to have parenthesized context.",
-    "TODO without context (who, ticket, deadline) becomes permanent. Parenthesized context ensures accountability.",
+    "A bare TODO becomes permanent because nobody knows the intended follow-up. Add a real issue, owner, constraint, or removal condition in parentheses; do not invent placeholder metadata just to satisfy the syntax.",
 );
 
 const BANNED: &[&str] = &["TODO", "FIXME", "HACK", "XXX"];

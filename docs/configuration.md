@@ -12,6 +12,16 @@ Target-root precedence is:
 
 The selected target must resolve through Cargo metadata to a root package or virtual workspace. Missing configuration is an error except for `--init`, which creates the selected destination and refuses to overwrite it.
 
+## Source suppressions
+
+Generated configurations allow source suppression directives by default. Repositories that keep every exception in shared configuration can reject them before rule dispatch:
+
+```toml
+allow_suppressions = false
+```
+
+With that policy, `#rw(...)` produces a `rust_rulewright_directives` finding and does not suppress its target. Layout markers such as `#rw:aligned` and `#rw:sorted(asc)` are unaffected because they opt into checks instead of hiding findings.
+
 ## Rule entries
 
 `rulewright --init` emits every rule from the active registry, including downstream packs:
@@ -40,7 +50,16 @@ ignore = ["@generated"]
 
 Ignore patterns are matched against slash-separated paths relative to the workspace root. `*` stays within one path component and `**` crosses directories, so `**/*_tests.rs` covers split test modules at the root and at any nesting depth, while `crates/example-tests/**` covers an entire workspace member. Invalid patterns are rejected while loading the configuration instead of silently matching nothing. Rulewright normalizes discovered Windows paths before matching them.
 
-Rust files reached only through `#[cfg(test)] mod ...`, including `#[path = "..."]` modules and test-scoped `include!("...")` files, are classified as test code from the module graph rather than their filename. A Cargo member that happens to contain only tests still looks like an ordinary library in metadata, so scope a dedicated test member explicitly when its rules should differ from production crates.
+Cargo test, benchmark, and example targets are classified as test code from Cargo metadata. That classification follows their `mod`, `#[path = "..."]`, and `include!("...")` edges, as does any Rust file reached only through `#[cfg(test)] mod ...`; physical filenames are not used as a substitute for the module graph.
+
+A workspace member built only as test infrastructure can declare that all of its Rust targets are test-only:
+
+```toml
+[package.metadata.rulewright]
+test-only = true
+```
+
+Use this only for dedicated fixture or test-harness packages. A package containing production library or binary code should leave it unset.
 
 Normal runs warn about missing and unknown rule entries; missing entries are backfilled in memory. `--strict` turns all configuration warnings into errors. Unknown parameters, invalid parameter types, duplicate list values, and values outside a parameter's declared choices are always errors. For example, `rust_padding.boundaries` accepts `functions`, `control-flow`, `let-runs`, `returns`, and `tail-expressions`. `--parse-config <PATH>` prints the resolved rule configuration as JSON.
 

@@ -6,9 +6,14 @@ use crate::{AstCtx, Example, Violation};
 #[rustfmt::skip]
 const EXAMPLES: &[Example] = &[
     Example {
-        label: "constructor with four parameters",
-        code: "struct Deposit;\nimpl Deposit {\n    pub fn new(account: Account, amount: Currency, memo: Memo, clock: Clock) -> Self {\n        Deposit\n    }\n}",
+        label: "constructor with five parameters",
+        code: "struct Deposit;\nimpl Deposit {\n    pub fn new(account: Account, amount: Currency, memo: Memo, clock: Clock, audit: Audit) -> Self {\n        Deposit\n    }\n}",
         pass: false,
+    },
+    Example {
+        label: "four distinct domain parameters",
+        code: "struct Event; impl Event { pub fn new(key: Key, id: Id, count: Count, time: Time) -> Self { Event } }",
+        pass: true,
     },
     Example {
         label: "three consecutive str parameters",
@@ -17,7 +22,7 @@ const EXAMPLES: &[Example] = &[
     },
     Example {
         label: "with_ constructor returning type name",
-        code: "struct Deposit;\nimpl Deposit {\n    pub fn with_parts(a: Account, b: Currency, c: Memo, d: Clock) -> Deposit {\n        Deposit\n    }\n}",
+        code: "struct Deposit;\nimpl Deposit {\n    pub fn with_parts(a: Account, b: Currency, c: Memo, d: Clock, audit: Audit) -> Deposit {\n        Deposit\n    }\n}",
         pass: false,
     },
     Example {
@@ -62,16 +67,16 @@ const PRIMITIVES: &[&str] = &[
 crate::ast_rule!(
     ctor_param_count,
     "Flag constructors with too many parameters or runs of identically-typed primitives — cascade construction through helper types.",
-    "Long or same-typed constructor parameter lists invite silent argument mix-ups; grouping parameters semantically makes construction self-checking.",
+    "Long or same-typed constructor parameter lists invite silent argument mix-ups. Introduce named options or domain values along real conceptual boundaries; do not move unrelated arguments into an unstructured parameter object.",
     Medium,
-    params { threshold: i64 = 4 },
+    params { threshold: i64 = 5 },
 );
 
 fn check_ctor_param_count(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let threshold = ctx
         .file
         .config
-        .get_usize("rust_ctor_param_count", &PARAMS[0]);
+        .get_usize("rust_ctor_param_count", &CTOR_PARAM_COUNT_PARAMS[0]);
 
     ctx.nodes::<ast::Impl>()
         .filter(|item| !ctx.is_in_test(item) && item.trait_().is_none())

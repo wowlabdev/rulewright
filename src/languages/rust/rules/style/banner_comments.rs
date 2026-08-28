@@ -116,5 +116,5 @@ fn fix_banner_comments(_ctx: &FileCtx<'_>, violation: &Violation) -> Option<Fix>
 
 crate::rulewright_test!(check_banner_comments, {
     crate::example_tests!(EXAMPLES, check_banner_comments);
-    crate::fix_tests!(line, check_banner_comments, fix_banner_comments);
+    crate::fix_tests!(EXAMPLES, line, check_banner_comments, fix_banner_comments);
 });

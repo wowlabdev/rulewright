@@ -65,6 +65,7 @@ fn attribute_elements(item: &ast::Item) -> Vec<(u8, SyntaxElement)> {
             {
                 Some((0, element))
             }
+
             SyntaxElement::Node(node) => ast::Attr::cast(node.clone()).map(|attr| {
                 let rank = if attr
                     .as_simple_call()
@@ -77,12 +78,12 @@ fn attribute_elements(item: &ast::Item) -> Vec<(u8, SyntaxElement)> {
 
                 (rank, element)
             }),
+
             SyntaxElement::Token(_) => None,
         })
         .collect()
 }
 
-// #rw(fn: rust_clone_in_loop) syntax-editor sorting requires detached attribute nodes
 fn fix_attr_order(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
     let mut changed = false;
@@ -109,5 +110,5 @@ fn fix_attr_order(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String>
 
 crate::rulewright_ast_test!(check_attr_order, {
     crate::example_tests!(EXAMPLES, check_attr_order);
-    crate::fix_tests!(ast_tree, check_attr_order, fix_attr_order);
+    crate::fix_tests!(EXAMPLES, ast_tree, check_attr_order, fix_attr_order);
 });

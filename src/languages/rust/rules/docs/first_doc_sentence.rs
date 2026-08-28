@@ -76,7 +76,9 @@ crate::line_rule!(
 );
 
 fn check_first_doc_sentence(ctx: &FileCtx<'_>) -> Vec<Violation> {
-    let max_words = ctx.config.get_usize("rust_first_doc_sentence", &PARAMS[0]);
+    let max_words = ctx
+        .config
+        .get_usize("rust_first_doc_sentence", &FIRST_DOC_SENTENCE_PARAMS[0]);
     let mut out = Vec::new();
 
     for block in doc_blocks(ctx.lines) {
@@ -162,12 +164,15 @@ fn check_block(
             block.start_line,
             format!("first doc sentence has {words} words (max {max_words})"),
         )),
+
         Some(_) => {}
+
         None if continues => out.push(violation(
             ctx.rel,
             block.start_line,
             "first doc sentence must end on the block's first line",
         )),
+
         None => {
             if first.split_whitespace().count() > max_words {
                 out.push(violation(

@@ -12,8 +12,10 @@ pub(super) fn weak_type_name(ty: &ast::Type) -> Option<String> {
             {
                 Some("&str".to_string())
             }
+
             _ => None,
         },
+
         ast::Type::PathType(path) => {
             let segment = path.path()?.segment()?;
 
@@ -44,6 +46,7 @@ pub(super) fn weak_type_name(ty: &ast::Type) -> Option<String> {
             )
             .then_some(name)
         }
+
         _ => None,
     }
 }

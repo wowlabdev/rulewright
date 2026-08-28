@@ -33,12 +33,16 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     non_exhaustive_on_public,
-    "Flag public enums without `#[non_exhaustive]` — prevents breaking changes when adding variants.",
-    "Adding a variant to a public enum is a breaking change. #[non_exhaustive] lets you add variants without a major version bump.",
+    "Flag `pub` enums without `#[non_exhaustive]` when downstream variants should remain extensible.",
+    "Adding a variant can break downstream exhaustive matches. Use `#[non_exhaustive]` for externally reachable enums in publishable packages whose variant set may grow; packages that explicitly set `publish = false` are skipped. Keep the rule disabled or scoped away for private-module enums and deliberately closed protocol, state-machine, or schema vocabularies. Rulewright recognizes syntax-level `pub` but does not resolve re-export visibility.",
     Medium,
 );
 
 fn check_non_exhaustive_on_public(ctx: &AstCtx<'_>) -> Vec<Violation> {
+    if ctx.file.is_explicitly_non_publishable() {
+        return Vec::new();
+    }
+
     let public_enums = ctx
         .nodes::<ast::Enum>()
         .filter(|item| !ctx.is_in_test(item))
@@ -59,7 +63,7 @@ fn check_non_exhaustive_on_public(ctx: &AstCtx<'_>) -> Vec<Violation> {
             Some(ctx.violation(
                 &name,
                 format!(
-                    "public enum `{name}` should have `#[non_exhaustive]` to allow adding variants without breaking downstream"
+                    "`pub` enum `{name}` is exhaustively matchable downstream — add `#[non_exhaustive]` only when this externally reachable vocabulary should grow without a breaking release"
                 ),
             ))
         })
@@ -68,4 +72,36 @@ fn check_non_exhaustive_on_public(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
 crate::rulewright_ast_test!(check_non_exhaustive_on_public, {
     crate::example_tests!(EXAMPLES, check_non_exhaustive_on_public);
+
+    #[test]
+    fn package_publishability_controls_downstream_enum_stability() {
+        let source = "pub enum Status { Ready, Waiting }";
+
+        assert_eq!(
+            crate::test_support::check_source_ast_at(
+                "fixture.rs",
+                source,
+                check_non_exhaustive_on_public,
+            )
+            .len(),
+            1
+        );
+        assert!(
+            crate::test_support::check_source_ast_publishability(
+                source,
+                false,
+                check_non_exhaustive_on_public,
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            crate::test_support::check_source_ast_publishability(
+                source,
+                true,
+                check_non_exhaustive_on_public,
+            )
+            .len(),
+            1
+        );
+    }
 });

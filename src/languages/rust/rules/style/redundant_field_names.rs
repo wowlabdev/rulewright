@@ -68,5 +68,10 @@ fn fix_redundant_field_names(ctx: &AstCtx<'_>, v: &Violation) -> Option<Fix> {
 
 crate::rulewright_ast_test!(check_redundant_field_names, {
     crate::example_tests!(EXAMPLES, check_redundant_field_names);
-    crate::fix_tests!(ast, check_redundant_field_names, fix_redundant_field_names);
+    crate::fix_tests!(
+        EXAMPLES,
+        ast,
+        check_redundant_field_names,
+        fix_redundant_field_names
+    );
 });

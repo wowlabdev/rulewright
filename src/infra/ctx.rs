@@ -9,6 +9,8 @@ pub struct FileCtx<'a> {
     pub path: &'a Path,
     /// Cargo package that owns this file, if the file belongs to a workspace member.
     pub package_name: Option<&'a str>,
+    /// Whether Cargo metadata permits publishing the owning package; `None` outside a package.
+    pub package_publishable: Option<bool>,
     pub lines: &'a [&'a str],
     pub contents: &'a str,
     pub config: &'a Config,
@@ -24,6 +26,8 @@ pub struct Violation {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rule: Option<&'static str>,
+    #[serde(skip)]
+    pub(crate) fixable: bool,
 }
 
 impl Violation {
@@ -37,6 +41,16 @@ impl Violation {
         self.column = Some(column);
 
         self
+    }
+
+    pub(crate) fn mark_fixable(&mut self) {
+        self.fixable = true;
+    }
+
+    /// Whether the registered fixer produced an edit for this specific finding.
+    #[must_use]
+    pub const fn is_fixable(&self) -> bool {
+        self.fixable
     }
 
     /// Return the rule name or `"unknown"` for untagged violations.
@@ -54,10 +68,17 @@ pub fn violation(rel: &str, line: usize, msg: impl Into<String>) -> Violation {
         column: None,
         message: msg.into(),
         rule: None,
+        fixable: false,
     }
 }
 
 impl FileCtx<'_> {
+    /// Whether the owning Cargo package explicitly sets `publish = false`.
+    #[must_use]
+    pub const fn is_explicitly_non_publishable(&self) -> bool {
+        matches!(self.package_publishable, Some(false))
+    }
+
     /// Get the source text of a specific line (1-based).
     #[must_use]
     pub fn line(&self, lineno: usize) -> Option<&str> {

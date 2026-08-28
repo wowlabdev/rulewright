@@ -73,6 +73,21 @@ const SHINGLE_FINGERPRINT_BYTES: usize = 16;
 const QUALIFIED_PATH_TOKEN_COUNT: usize = 2;
 const SPACED_QUALIFIED_PATH_TOKEN_COUNT: usize = 3;
 
+fn empty_workspace_file(
+    file: &FileCtx<'_>,
+    crate_roots: HashSet<String>,
+    suppressions: Suppressions,
+) -> WorkspaceRustFile {
+    WorkspaceRustFile {
+        rel: file.rel.to_owned(),
+        structs: Vec::new(),
+        functions: Vec::new(),
+        strings: Vec::new(),
+        crate_roots,
+        suppressions,
+    }
+}
+
 // #rw(fn: rust_cyclomatic_complexity) one typed walk extracts the records requested by all workspace rules
 pub(crate) fn extract(
     file: &FileCtx<'_>,
@@ -89,14 +104,7 @@ pub(crate) fn extract(
             .take(GENERATED_HEADER_LINES)
             .any(|line| line.contains("@generated"))
     {
-        return WorkspaceRustFile {
-            rel: file.rel.to_owned(),
-            structs: Vec::new(),
-            functions: Vec::new(),
-            strings: Vec::new(),
-            crate_roots,
-            suppressions,
-        };
+        return empty_workspace_file(file, crate_roots, suppressions);
     }
 
     let line_index = line_index::LineIndex::new(file.contents);
@@ -199,10 +207,32 @@ pub(crate) fn extract(
         .filter(|token| token.kind() == SyntaxKind::STRING);
     let strings = string_tokens
         .filter(|token| {
-            !token
+            let in_examples = token
                 .parent_ancestors()
                 .filter_map(ast::Const::cast)
-                .any(|item| item.name().is_some_and(|name| name.text() == "EXAMPLES"))
+                .any(|item| item.name().is_some_and(|name| name.text() == "EXAMPLES"));
+            let in_attribute = token
+                .parent_ancestors()
+                .any(|node| ast::Attr::can_cast(node.kind()));
+            let in_macro_lint_reason = is_macro_lint_reason(token);
+            let in_rulewright_test = token
+                .parent_ancestors()
+                .filter_map(ast::MacroCall::cast)
+                .filter_map(|call| call.path())
+                .filter_map(|path| path.segment())
+                .filter_map(|segment| segment.name_ref())
+                .any(|name| {
+                    let name = name.text();
+
+                    name.starts_with("rulewright_") && name.contains("_test")
+                });
+            let in_test = token.parent().is_some_and(|parent| in_test(&parent));
+
+            !in_examples
+                && !in_attribute
+                && !in_macro_lint_reason
+                && !in_rulewright_test
+                && !in_test
         })
         .map(|token| StringRecord {
             value: token.text().to_owned(),
@@ -218,6 +248,28 @@ pub(crate) fn extract(
         crate_roots,
         suppressions,
     }
+}
+
+fn is_macro_lint_reason(token: &ra_ap_syntax::SyntaxToken) -> bool {
+    let Some(definition) = token.parent_ancestors().find_map(ast::MacroRules::cast) else {
+        return false;
+    };
+    let mut previous = [None, None];
+
+    for candidate in definition
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(ra_ap_syntax::NodeOrToken::into_token)
+        .filter(|candidate| !candidate.kind().is_trivia())
+    {
+        if candidate.text_range() == token.text_range() {
+            return previous[0].as_deref() == Some("reason") && previous[1].as_deref() == Some("=");
+        }
+
+        previous = [previous[1].take(), Some(candidate.text().to_owned())];
+    }
+
+    false
 }
 
 impl ShingleFingerprint {

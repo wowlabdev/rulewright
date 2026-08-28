@@ -73,7 +73,6 @@ fn macro_name(call: &ast::MacroCall) -> Option<String> {
         .map(|name| name.text().to_string())
 }
 
-// #rw(fn: rust_alloc_in_loop) the punctuation window is built incrementally from syntax tokens
 fn has_compound_assign(call: &ast::MacroCall) -> Option<&'static str> {
     const OPERATORS: &[&str] = &["+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="];
     let mut punctuation = String::new();

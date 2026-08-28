@@ -46,7 +46,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     missing_assert_message,
     "Require a message argument on `assert!`, `assert_eq!`, `assert_ne!`.",
-    "Assertions without messages produce opaque failures. A message explains what invariant was violated.",
+    "Assertions without messages produce opaque failures. State the expected invariant and include the values needed to diagnose it; a message that merely paraphrases the condition adds no useful context.",
 );
 
 const COMPARISON_ASSERT_ARGUMENTS: usize = 2;

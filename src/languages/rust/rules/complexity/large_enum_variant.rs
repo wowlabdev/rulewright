@@ -58,7 +58,7 @@ fn check_large_enum_variant(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let min_size_diff = ctx
         .file
         .config
-        .get_u64("rust_large_enum_variant", &PARAMS[0]);
+        .get_u64("rust_large_enum_variant", &LARGE_ENUM_VARIANT_PARAMS[0]);
     let mut violations = Vec::new();
 
     for item in ctx

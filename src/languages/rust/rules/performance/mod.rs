@@ -5,7 +5,6 @@ mod async_loop_no_yield;
 mod box_leak;
 mod box_vec;
 mod busy_wait;
-mod clone_in_loop;
 mod collection_new_in_loop;
 mod default_hasher;
 mod from_instead_of_as;

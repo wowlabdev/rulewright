@@ -1,4 +1,4 @@
-// #rw(file: rust_alloc_in_loop, rust_default_hasher) clean is a cold developer-tool path with trusted rule-name keys and explicit edit reports
+// #rw(file: rust_default_hasher) clean is a cold developer-tool path with trusted rule-name keys and explicit edit reports
 // #rw(file: rust_inline_test_module_size) cleanup tests require private directive and edit helpers
 
 use std::{
@@ -120,6 +120,7 @@ pub fn clean_suppressions(ctx: &RunCtx<'_>, dry_run: bool) -> ExitCode {
 
     let applied = match fix::apply_fixes(&plan.fixes, &plan.snapshots, ctx.root) {
         Ok(applied) => applied,
+
         Err(error) => {
             if !ctx.quiet {
                 output::error(&format!("failed to apply directive edits: {error}"));
@@ -205,6 +206,7 @@ fn build_plan(ctx: &RunCtx<'_>) -> CleanPlan {
     let mut plan = CleanPlan::default();
     let (selected_rels, paths) = match cleaner_paths(ctx) {
         Ok(paths) => paths,
+
         Err(error) => {
             plan.failures.push(error.to_string().into_boxed_str());
 
@@ -217,6 +219,7 @@ fn build_plan(ctx: &RunCtx<'_>) -> CleanPlan {
     for path in paths {
         let rel = match relative_path(ctx, &path) {
             Ok(rel) => rel,
+
             Err(error) => {
                 plan.failures.push(error);
                 continue;
@@ -228,6 +231,7 @@ fn build_plan(ctx: &RunCtx<'_>) -> CleanPlan {
             Ok(AuditedPath::Generated) => {
                 plan.generated_files += usize::from(selected);
             }
+
             Ok(AuditedPath::Source(source)) => {
                 workspace_files.push(source.workspace_file);
 
@@ -235,6 +239,7 @@ fn build_plan(ctx: &RunCtx<'_>) -> CleanPlan {
                     audited_files.push(file);
                 }
             }
+
             Err(failures) => plan.failures.extend(failures),
         }
     }
@@ -301,6 +306,7 @@ fn audit_path(
 ) -> Result<AuditedPath, Vec<Box<str>>> {
     let contents = match crate::file::read_text(path) {
         Ok(contents) => contents,
+
         Err(error) => {
             return Err(vec![
                 format!("{rel}: failed to read source: {error}").into_boxed_str(),
@@ -313,21 +319,25 @@ fn audit_path(
     }
 
     let lines: Vec<&str> = contents.lines().collect();
+    let package = super::package_for_path(ctx.packages, path);
     let file = FileCtx {
         rel: &rel,
         path,
-        package_name: super::package_name_for_path(ctx.packages, path),
+        package_name: package.map(|package| package.name.as_str()),
+        package_publishable: package.map(|package| package.publishable),
         lines: &lines,
         contents: &contents,
         config: ctx.config,
     };
     let audit = match rust::audit_suppressions(&file, rules, registered_names) {
         Ok(audit) => audit,
+
         Err(SuppressionAuditError::RustSyntax) => {
             return Err(vec![
                 format!("{rel}: Rust syntax could not be parsed").into_boxed_str(),
             ]);
         }
+
         Err(SuppressionAuditError::InvalidDirectives(errors)) => {
             return Err(errors
                 .into_iter()
@@ -392,7 +402,8 @@ fn plan_file(
             .copied()
             .unwrap_or("");
         let budget_active = entry.values.contains_key("rust_too_many_lines_in_file")
-            && lines.len() > file_size_threshold(ctx.config, rules);
+            && lines.iter().filter(|line| !line.trim().is_empty()).count()
+                > file_size_threshold(ctx.config, rules);
         let Ok(planned) = plan_entry(
             &entry,
             &raw_violations,
@@ -418,10 +429,8 @@ fn plan_file(
             fix.end_line = fix.end_line.saturating_add(1);
         }
 
-        // #rw(rust_clone_in_loop) the edit and report entry independently own the stable relative path
         plan.fixes.push((rel.clone(), fix));
         plan.removals.push(Removal {
-            // #rw(rust_clone_in_loop) the edit and report entry independently own the stable relative path
             rel: rel.clone(),
             line: entry.line,
             targets: stale.into_boxed_slice(),

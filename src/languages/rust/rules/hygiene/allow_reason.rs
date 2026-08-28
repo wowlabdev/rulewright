@@ -77,7 +77,7 @@ const EXAMPLES: &[Example] = &[
 crate::line_rule!(
     allow_reason,
     "Require a `reason = \"...\"` or comment explaining why `#[allow(...)]`/`#[expect(...)]` is used.",
-    "Unexplained lint overrides hide the intent behind suppressing a warning, making it unclear if the suppression is still needed.",
+    "Unexplained lint overrides hide whether a warning is understood or merely silenced. Keep the override as narrow as practical and state the concrete reason the lint does not apply at that location; do not restate the lint name.",
 );
 
 fn is_expect_attr(trimmed: &str) -> bool {
@@ -148,10 +148,12 @@ fn attribute_span_has_reason(lines: &[&str], start: usize) -> bool {
 
             match byte {
                 b'"' => in_string = true,
+
                 b'(' => {
                     entered_attribute = true;
                     depth += 1;
                 }
+
                 b')' if entered_attribute => {
                     depth = depth.saturating_sub(1);
 
@@ -159,6 +161,7 @@ fn attribute_span_has_reason(lines: &[&str], start: usize) -> bool {
                         return false;
                     }
                 }
+
                 _ => {}
             }
         }

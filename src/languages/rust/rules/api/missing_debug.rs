@@ -137,7 +137,7 @@ fn fix_missing_debug(ctx: &AstCtx<'_>, v: &Violation) -> Option<Fix> {
 
 crate::rulewright_ast_test!(check_missing_debug, {
     crate::example_tests!(EXAMPLES, check_missing_debug);
-    crate::fix_tests!(ast, check_missing_debug, fix_missing_debug);
+    crate::fix_tests!(EXAMPLES, ast, check_missing_debug, fix_missing_debug);
 
     #[gtest]
     fn sensitive_public_struct_requires_a_manual_debug_impl() -> Result<()> {

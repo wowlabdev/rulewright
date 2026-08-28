@@ -32,7 +32,7 @@ const EXAMPLES: &[Example] = &[
 crate::line_rule!(
     box_leak,
     "Require `SAFETY` or `LEAK` comment on `Box::leak()` calls.",
-    "Box::leak intentionally creates a memory leak. A justification comment proves it was deliberate, not accidental.",
+    "Box::leak deliberately gives up deallocation. Prefer owned storage with an explicit lifetime; when process-lifetime allocation is the design, document why the allocation count is bounded and why reclamation is unnecessary.",
     High,
 );
 

@@ -18,8 +18,8 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     max_fn_lines,
-    "Flag functions longer than threshold lines.",
-    "Functions over 150 lines are hard to understand, test, and review. Break them into smaller focused functions.",
+    "Flag functions longer than the configured nonblank-line threshold.",
+    "Very long functions are hard to understand, test, and review. Extract cohesive operations with honest names or split distinct responsibilities; do not create forwarding helpers that merely move arbitrary line ranges, and tune the threshold when the domain is clearer as one procedure.",
     Medium,
     params {
         threshold: i64 = 150
@@ -27,16 +27,20 @@ crate::ast_rule!(
 );
 
 fn check_max_fn_lines(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let max_fn_lines = ctx.file.config.get_usize("rust_max_fn_lines", &PARAMS[0]);
+    let max_fn_lines = ctx
+        .file
+        .config
+        .get_usize("rust_max_fn_lines", &MAX_FN_LINES_PARAMS[0]);
 
     ctx.nodes::<ast::Fn>()
         .filter(|function| !ctx.is_in_test(function))
         .filter_map(|function| {
             let body = function.body()?;
-            let range = body.syntax().text_range();
-            let start = ctx.line_index.line_col(range.start()).line as usize;
-            let end = ctx.line_index.line_col(range.end()).line as usize;
-            let lines = end.saturating_sub(start);
+            let source = body.syntax().text().to_string();
+            let lines = source
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count();
 
             (lines > max_fn_lines).then(|| {
                 let name = function.name()?;
@@ -68,5 +72,18 @@ crate::rulewright_ast_test!(check_max_fn_lines, {
         verify_true!(v[0].message.contains("lines long"))?;
 
         Ok(())
+    }
+
+    #[gtest]
+    fn blank_lines_do_not_consume_the_function_budget() -> Result<()> {
+        let mut source = String::from("fn spaced() {\n");
+
+        for i in 0..140 {
+            let _ = writeln!(source, "    let _x{i} = {i};\n");
+        }
+
+        source.push_str("}\n");
+
+        verify_true!(run(&source).is_empty())
     }
 });

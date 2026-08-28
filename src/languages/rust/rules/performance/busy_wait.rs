@@ -118,7 +118,6 @@ impl SpinScan {
                 scan.waits = true;
             }
 
-            // #rw(rust_clone_in_loop) SyntaxNode clone is reference-counted and O(1)
             if let Some(call) = ast::CallExpr::cast(syntax.clone())
                 && call
                     .expr()

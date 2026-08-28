@@ -169,8 +169,6 @@ fn replacement_import(item: &ast::Use) -> Option<Option<ast::Use>> {
     parse_use(&source).map(Some)
 }
 
-// #rw(fn: rust_alloc_in_loop) each derive and grouped import needs freshly formatted source
-// #rw(fn: rust_clone_in_loop) syntax-editor replacements must be detached nodes
 fn fix_thiserror_qualified(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
     let mut changed = false;
@@ -206,6 +204,7 @@ fn fix_thiserror_qualified(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Optio
                 Some(replacement) => {
                     editor.replace(item.syntax().clone(), replacement.syntax().clone_subtree());
                 }
+
                 None => editor.delete(item.syntax().clone()),
             }
 
@@ -230,5 +229,10 @@ fn parse_attr(source: &str) -> Option<ast::Attr> {
 
 crate::rulewright_ast_test!(check_thiserror_qualified, {
     crate::example_tests!(EXAMPLES, check_thiserror_qualified);
-    crate::fix_tests!(ast_tree, check_thiserror_qualified, fix_thiserror_qualified);
+    crate::fix_tests!(
+        EXAMPLES,
+        ast_tree,
+        check_thiserror_qualified,
+        fix_thiserror_qualified
+    );
 });

@@ -32,6 +32,16 @@ enabled = false
 }
 
 #[gtest]
+fn source_suppressions_are_allowed_by_default_and_can_be_disabled() -> Result<()> {
+    let default = parse("[rules.panic]\nenabled = true\n");
+    let disabled = parse("allow_suppressions = false\n\n[rules.panic]\nenabled = true\n");
+
+    verify_true!(default.allows_suppressions())?;
+
+    verify_false!(disabled.allows_suppressions())
+}
+
+#[gtest]
 fn multiple_glob_sets() -> Result<()> {
     let cfg = parse(
         r#"

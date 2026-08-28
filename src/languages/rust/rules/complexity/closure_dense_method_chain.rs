@@ -15,6 +15,11 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
+        label: "long debug builder field list",
+        code: "fn f(value: &Value, out: &mut Formatter) { out.debug_struct(\"Value\").field(\"a\", &value.a).field(\"b\", &value.b).field(\"c\", &value.c).field(\"d\", &value.d).field(\"e\", &value.e).field(\"f\", &value.f).field(\"g\", &value.g).field(\"h\", &value.h).field(\"i\", &value.i).field(\"j\", &value.j).finish(); }",
+        pass: true,
+    },
+    Example {
         label: "long closure-free heterogeneous builder",
         code: "fn f(builder: Builder) { let _ = builder.name(1).cost(2).optional(true).retries(3).format(4).target(5).finish(); }",
         pass: true,
@@ -31,7 +36,7 @@ const EXAMPLES: &[Example] = &[
     },
     Example {
         label: "dense selection chain",
-        code: "fn f(slots: &[Slot]) { let _ = slots.iter().enumerate().filter_map(|(index, slot)| ready(slot).then_some((index, slot))).min_by(|left, right| compare(left, right)).map(first).or_else(|| depleted(slots)); }",
+        code: "fn f(slots: &[Slot]) { let _ = slots.iter().enumerate().filter_map(|(index, slot)| ready(slot).then_some((index, slot))).filter(|(_, slot)| allowed(slot)).inspect(|item| observe(item)).min_by(|left, right| compare(left, right)).map(|item| first(item)).or_else(|| depleted(slots)); }",
         pass: false,
     },
     Example {
@@ -53,17 +58,24 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     closure_dense_method_chain,
-    "Flag method-call chains containing at least the configured number of inline closure arguments.",
-    "Closure-dense fluent chains hide several branching decisions in one expression. Name an intermediate result or extract a helper.",
+    "Flag method-call chains that are very long or contain many inline closure arguments.",
+    "Long fluent chains can hide intermediate states, while closure-dense chains can hide several branching decisions in one expression. Split only when the work has meaningful logical stages, bind each stage including the final result, and return the final binding. When one chain already represents a single coherent operation, suppress the finding with that reason instead of inventing arbitrary intermediate variables.",
     Medium,
-    params { threshold: i64 = 3 },
+    params {
+        closure_threshold: i64 = 6,
+        chain_threshold: i64 = 12
+    },
 );
 
 fn check_closure_dense_method_chain(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let threshold = ctx
-        .file
-        .config
-        .get_usize("rust_closure_dense_method_chain", &PARAMS[0]);
+    let closure_threshold = ctx.file.config.get_usize(
+        "rust_closure_dense_method_chain",
+        &CLOSURE_DENSE_METHOD_CHAIN_PARAMS[0],
+    );
+    let chain_threshold = ctx.file.config.get_usize(
+        "rust_closure_dense_method_chain",
+        &CLOSURE_DENSE_METHOD_CHAIN_PARAMS[1],
+    );
 
     let outermost_calls = ctx
         .nodes::<ast::MethodCallExpr>()
@@ -72,13 +84,22 @@ fn check_closure_dense_method_chain(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
     outermost_calls
         .filter_map(|call| {
-            let closure_count = method_chain_inline_closures(&call);
+            let (chain_length, closure_count) = method_chain_metrics(&call);
 
-            (closure_count >= threshold).then(|| {
+            if closure_count >= closure_threshold {
+                return Some(ctx.violation(
+                    &call,
+                    format!(
+                        "method-call chain contains {closure_count} inline closure arguments (threshold {closure_threshold}, {chain_length} calls total); split meaningful logical stages, or suppress with a reason if this is one coherent operation"
+                    ),
+                ));
+            }
+
+            (chain_length >= chain_threshold && !is_repetitive_fluent_chain(&call)).then(|| {
                 ctx.violation(
                     &call,
                     format!(
-                        "method-call chain contains {closure_count} inline closure arguments (threshold {threshold})"
+                        "method-call chain contains {chain_length} calls (threshold {chain_threshold}, {closure_count} inline closure arguments); split meaningful logical stages, or suppress with a reason if this is one coherent operation"
                     ),
                 )
             })
@@ -86,16 +107,49 @@ fn check_closure_dense_method_chain(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .collect()
 }
 
-fn method_chain_inline_closures(call: &ast::MethodCallExpr) -> usize {
+fn is_repetitive_fluent_chain(call: &ast::MethodCallExpr) -> bool {
+    let mut names = Vec::new();
+    let mut current = Some(call.clone());
+
+    while let Some(method) = current {
+        if let Some(name) = method.name_ref() {
+            names.push(name.text().to_string());
+        }
+
+        current = match method.receiver() {
+            Some(ast::Expr::MethodCallExpr(receiver)) => Some(receiver),
+            _ => None,
+        };
+    }
+
+    if names.len() < 3 {
+        return false;
+    }
+
+    let without_source = &names[..names.len() - 1];
+    let without_terminal_or_source = &names[1..names.len() - 1];
+
+    all_same(without_source) || all_same(without_terminal_or_source)
+}
+
+fn all_same(names: &[String]) -> bool {
+    names
+        .first()
+        .is_some_and(|first| names.iter().all(|name| name == first))
+}
+
+fn method_chain_metrics(call: &ast::MethodCallExpr) -> (usize, usize) {
+    let mut chain_length = 1;
     let mut closure_count = inline_closure_arguments(call);
     let mut receiver = call.receiver();
 
     while let Some(ast::Expr::MethodCallExpr(inner)) = receiver {
+        chain_length += 1;
         closure_count += inline_closure_arguments(&inner);
         receiver = inner.receiver();
     }
 
-    closure_count
+    (chain_length, closure_count)
 }
 
 fn inline_closure_arguments(call: &ast::MethodCallExpr) -> usize {
@@ -151,10 +205,31 @@ crate::rulewright_ast_test!(check_closure_dense_method_chain, {
     #[gtest]
     fn reports_only_the_outermost_call() -> Result<()> {
         let violations = run(
-            "fn f(slots: &[Slot]) { let _ = slots.iter().enumerate().filter_map(|(index, slot)| ready(slot).then_some((index, slot))).min_by(|left, right| compare(left, right)).map(first).or_else(|| depleted(slots)); }",
+            "fn f(slots: &[Slot]) { let _ = slots.iter().enumerate().filter_map(|(index, slot)| ready(slot).then_some((index, slot))).filter(|(_, slot)| allowed(slot)).inspect(|item| observe(item)).min_by(|left, right| compare(left, right)).map(|item| first(item)).or_else(|| depleted(slots)); }",
         );
 
         verify_that!(violations, len(eq(1)))?;
-        verify_true!(violations[0].message.contains("3 inline closure arguments"))
+        verify_true!(violations[0].message.contains("6 inline closure arguments"))?;
+        verify_true!(violations[0].message.contains("one coherent operation"))
+    }
+
+    #[gtest]
+    fn reports_long_chain_without_closures() -> Result<()> {
+        let violations =
+            run("fn f(w: Writer) { let _ = w.a().b().c().d().e().f().g().h().i().j().k().l(); }");
+
+        verify_that!(violations, len(eq(1)))?;
+        verify_true!(violations[0].message.contains("12 calls"))?;
+        verify_true!(violations[0].message.contains("0 inline closure arguments"))?;
+        verify_true!(violations[0].message.contains("suppress with a reason"))
+    }
+
+    #[gtest]
+    fn nested_argument_chain_is_measured_separately() -> Result<()> {
+        let source = "fn f(xs: Xs) { let _ = xs.consume(factory.a().b().c().d().e().f().g().h().i().j().k().l()).map(value); }";
+        let violations = run(source);
+
+        verify_that!(violations, len(eq(1)))?;
+        verify_true!(violations[0].message.contains("12 calls"))
     }
 });

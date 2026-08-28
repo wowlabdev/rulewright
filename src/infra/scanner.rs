@@ -76,15 +76,18 @@ pub(crate) fn line_comment_starts(source: &str) -> Vec<Option<usize>> {
                         column += 1;
                     }
                 }
+
                 _ => {
                     index += 1;
                     column += 1;
                 }
             },
+
             LexState::LineComment => {
                 index += 1;
                 column += 1;
             }
+
             LexState::BlockComment { depth } => match (byte, next) {
                 (b'/', Some(b'*')) => {
                     state = LexState::BlockComment { depth: depth + 1 };
@@ -101,11 +104,13 @@ pub(crate) fn line_comment_starts(source: &str) -> Vec<Option<usize>> {
                     index += TWO_BYTE_TOKEN;
                     column += TWO_BYTE_TOKEN;
                 }
+
                 _ => {
                     index += 1;
                     column += 1;
                 }
             },
+
             LexState::String { escaped } | LexState::Char { escaped } => {
                 let quote = if matches!(state, LexState::String { .. }) {
                     b'"'
@@ -133,6 +138,7 @@ pub(crate) fn line_comment_starts(source: &str) -> Vec<Option<usize>> {
                 index += 1;
                 column += 1;
             }
+
             LexState::RawString { hashes } => {
                 let after_quote = bytes.get(index + 1..).unwrap_or_default();
 
@@ -224,6 +230,7 @@ pub(crate) fn skip_string(input: &mut &str) {
             Some('\\') => {
                 let _ = parse::try_parse(input, any);
             }
+
             _ => return,
         }
     }
@@ -278,16 +285,21 @@ pub(crate) fn code_only(line: &str) -> String {
     while let Some(ch) = parse::try_parse(&mut input, any) {
         match ch {
             '/' if parse::matches(input, '/') => break,
+
             '/' if parse::try_parse(&mut input, '*').is_some() => {
                 skip_block_comment(&mut input);
             }
+
             '"' => skip_string(&mut input),
+
             'r' if parse::matches(input, '#') || parse::matches(input, '"') => {
                 if !try_skip_raw_string(&mut input) {
                     code.push(ch);
                 }
             }
+
             '\'' => skip_char_literal(&mut input),
+
             _ => code.push(ch),
         }
     }
@@ -301,6 +313,7 @@ fn skip_block_comment(input: &mut &str) {
     while let Some(ch) = parse::try_parse(input, any) {
         match ch {
             '/' if parse::try_parse(input, '*').is_some() => depth += 1,
+
             '*' if parse::try_parse(input, '/').is_some() => {
                 depth -= 1;
 
@@ -308,6 +321,7 @@ fn skip_block_comment(input: &mut &str) {
                     break;
                 }
             }
+
             _ => {}
         }
     }
@@ -322,6 +336,7 @@ pub(crate) fn char_positions(line: &str, target: char) -> Vec<usize> {
     while let Some(ch) = parse::try_parse(&mut input, any) {
         match ch {
             '/' if parse::matches(input, '/') => break,
+
             '"' => {
                 skip_string(&mut input);
                 pos = line.len() - input.len();
@@ -347,9 +362,11 @@ pub(crate) fn char_positions(line: &str, target: char) -> Vec<usize> {
                 pos = line.len() - input.len();
                 continue;
             }
+
             c if c == target => {
                 out.push(pos);
             }
+
             _ => {}
         }
 

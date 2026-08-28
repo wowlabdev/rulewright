@@ -222,6 +222,7 @@ fn validate_syntax(path: &Path, original: &str, replacement: &str) -> Result<(),
                 });
             }
         }
+
         Some("toml") => {
             if toml::from_str::<toml::Value>(original).is_ok()
                 && let Err(error) = toml::from_str::<toml::Value>(replacement)
@@ -233,6 +234,7 @@ fn validate_syntax(path: &Path, original: &str, replacement: &str) -> Result<(),
                 });
             }
         }
+
         _ => {}
     }
 
@@ -308,11 +310,14 @@ fn line_ending(contents: &str, path: &Path) -> Result<&'static str, ApplyError> 
                 saw_crlf = true;
                 index += 2;
             }
+
             b'\r' => return Err(ApplyError::MixedLineEndings(path.to_path_buf())),
+
             b'\n' => {
                 saw_lf = true;
                 index += 1;
             }
+
             _ => index += 1,
         }
     }

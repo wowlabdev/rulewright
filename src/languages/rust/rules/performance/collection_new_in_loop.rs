@@ -1,4 +1,4 @@
-use ra_ap_syntax::{AstNode, ast, ast::HasArgList};
+use ra_ap_syntax::{AstNode, ast};
 
 use super::support;
 use crate::{AstCtx, Example, Violation};
@@ -16,6 +16,11 @@ const EXAMPLES: &[Example] = &[
         pass: false,
     },
     Example {
+        label: "allocation-free empty string used as state",
+        code: "fn f(xs: &[String]) { for _ in 0..2 { let mut previous = String::new(); for value in xs { if value != &previous { previous = value.clone(); } } } }",
+        pass: true,
+    },
+    Example {
         label: "vec! macro inside loop",
         code: "fn f(n: usize) { for _ in 0..n { let v = vec![1, 2]; let _ = v.len(); } }",
         pass: false,
@@ -31,9 +36,9 @@ const EXAMPLES: &[Example] = &[
         pass: false,
     },
     Example {
-        label: "return escape still flagged (approximation: only call-argument use counts as escaping)",
+        label: "returned collection must remain iteration-local",
         code: "fn f(n: usize) -> Vec<u32> { for _ in 0..n { let v = Vec::new(); if !v.is_empty() { return v; } } Vec::new() }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "escapes as method-call argument into outer collection",
@@ -43,6 +48,11 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "escapes as plain function-call argument",
         code: "fn g(v: Vec<u32>) { drop(v); } fn f(n: usize) { for _ in 0..n { let v = Vec::new(); g(v); } }",
+        pass: true,
+    },
+    Example {
+        label: "escapes through assignment into an output value",
+        code: "struct Row { values: Vec<u32> } fn f(rows: &mut [Row]) { for row in rows { let mut values = Vec::with_capacity(4); values.push(1); row.values = values; } }",
         pass: true,
     },
     Example {
@@ -65,7 +75,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     collection_new_in_loop,
     "Flag collection constructors (`Vec::new()`, `vec![]`, `with_capacity`, ...) bound via `let` inside loops.",
-    "Allocating a fresh collection per iteration is invisible overhead — hoist it out of the loop and .clear() each round.",
+    "A fresh collection on every iteration may be avoidable allocation. Reuse one buffer with clear() only when iterations do not retain or return its contents and retained capacity is acceptable; otherwise keep the ownership boundary and suppress or tune the rule.",
     Medium,
 );
 
@@ -75,12 +85,13 @@ fn check_collection_new_in_loop(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .filter_map(|local| {
             let initializer = local.initializer()?;
 
-            if !is_collection_ctor(&initializer) {
-                return None;
-            }
-
+            let allocation = collection_ctor(&initializer)?;
             let name = local_ident(local.pat()?)?;
             let block = local.syntax().parent().and_then(ast::StmtList::cast)?;
+
+            if allocation == Allocation::Deferred && !grows_collection(&block, &name) {
+                return None;
+            }
 
             (!escapes_from_block(&block, &name)).then(|| ctx.violation(&local, MSG))
         })
@@ -92,24 +103,26 @@ const COLLECTION_TYPES: &[&str] = &[
 ];
 const MIN_CTOR_SEGMENTS: usize = 2;
 
-const MSG: &str = "collection allocated inside a loop — hoist it out and .clear() per iteration (escape check is best-effort: only call-argument use counts as escaping)";
+const MSG: &str = "scratch collection allocates inside a loop — consider hoisting it and calling .clear() between iterations, but keep it local when an iteration retains or returns the collection";
 
-fn is_collection_ctor(expr: &ast::Expr) -> bool {
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Allocation {
+    Deferred,
+    Immediate,
+}
+
+fn collection_ctor(expr: &ast::Expr) -> Option<Allocation> {
     match expr {
         ast::Expr::CallExpr(call) => {
             let Some(ast::Expr::PathExpr(function)) = call.expr() else {
-                return false;
+                return None;
             };
-            let Some(path) = function.path() else {
-                return false;
-            };
+            let path = function.path()?;
             let names = support::path_names(&path);
-            let Some(last) = names.last() else {
-                return false;
-            };
+            let last = names.last()?;
 
             if last == "with_capacity" {
-                return names.len() >= MIN_CTOR_SEGMENTS;
+                return (names.len() >= MIN_CTOR_SEGMENTS).then_some(Allocation::Immediate);
             }
 
             if last == "new" && support::has_no_args(call) {
@@ -117,24 +130,63 @@ fn is_collection_ctor(expr: &ast::Expr) -> bool {
                     .iter()
                     .rev()
                     .nth(1)
-                    .is_some_and(|ty| COLLECTION_TYPES.contains(&ty.as_str()));
+                    .is_some_and(|ty| COLLECTION_TYPES.contains(&ty.as_str()))
+                    .then_some(Allocation::Deferred);
             }
 
-            false
+            None
         }
-        ast::Expr::MacroExpr(mac) => {
-            mac.macro_call()
-                .and_then(|call| call.path())
-                .is_some_and(|path| {
+
+        ast::Expr::MacroExpr(mac) => mac
+            .macro_call()
+            .filter(|call| {
+                call.path().is_some_and(|path| {
                     path.qualifier().is_none()
                         && path
                             .segment()
                             .and_then(|segment| segment.name_ref())
                             .is_some_and(|name| name.text() == "vec")
                 })
-        }
-        _ => false,
+            })
+            .and_then(|call| {
+                let tokens = call.token_tree()?.syntax().text().to_string();
+                let contents = tokens
+                    .strip_prefix('[')
+                    .and_then(|tokens| tokens.strip_suffix(']'))?
+                    .trim();
+
+                (!contents.is_empty()).then_some(Allocation::Immediate)
+            }),
+
+        _ => None,
     }
+}
+
+fn grows_collection(block: &ast::StmtList, name: &str) -> bool {
+    const GROWING_METHODS: &[&str] = &[
+        "extend",
+        "insert",
+        "push",
+        "push_back",
+        "push_front",
+        "push_str",
+        "reserve",
+        "reserve_exact",
+        "resize",
+        "resize_with",
+    ];
+
+    block
+        .syntax()
+        .descendants()
+        .filter_map(ast::MethodCallExpr::cast)
+        .any(|call| {
+            call.name_ref()
+                .is_some_and(|method| GROWING_METHODS.contains(&method.text().as_str()))
+                && call.receiver().is_some_and(|receiver| {
+                    support::path_expr_name(&receiver).is_some_and(|receiver| receiver == name)
+                })
+        })
 }
 
 fn local_ident(pattern: ast::Pat) -> Option<String> {
@@ -142,18 +194,36 @@ fn local_ident(pattern: ast::Pat) -> Option<String> {
 }
 
 fn escapes_from_block(block: &ast::StmtList, name: &str) -> bool {
-    let plain_calls = block.syntax().descendants().filter_map(ast::CallExpr::cast);
-    let method_calls = block
+    block
         .syntax()
         .descendants()
-        .filter_map(ast::MethodCallExpr::cast);
+        .filter_map(ast::PathExpr::cast)
+        .filter(|path| {
+            support::path_expr_name(&ast::Expr::PathExpr(path.clone())).as_deref() == Some(name)
+        })
+        .any(|path| !is_non_escaping_method_receiver(&path))
+}
 
-    let mut arguments = plain_calls
-        .filter_map(|call| call.arg_list())
-        .chain(method_calls.filter_map(|call| call.arg_list()))
-        .flat_map(|arguments| arguments.args());
+fn is_non_escaping_method_receiver(path: &ast::PathExpr) -> bool {
+    const CONSUMING_METHODS: &[&str] = &[
+        "into_boxed_slice",
+        "into_iter",
+        "into_keys",
+        "into_values",
+        "leak",
+    ];
 
-    arguments.any(|argument| support::syntax_contains_ident(argument.syntax(), name))
+    path.syntax()
+        .ancestors()
+        .skip(1)
+        .find_map(ast::MethodCallExpr::cast)
+        .is_some_and(|call| {
+            call.receiver()
+                .is_some_and(|receiver| receiver.syntax() == path.syntax())
+                && call
+                    .name_ref()
+                    .is_none_or(|method| !CONSUMING_METHODS.contains(&method.text().as_str()))
+        })
 }
 
 crate::rulewright_ast_test!(check_collection_new_in_loop, {

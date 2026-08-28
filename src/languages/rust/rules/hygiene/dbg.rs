@@ -57,7 +57,6 @@ fn is_unqualified_macro(call: &ast::MacroCall, expected: &str) -> bool {
     })
 }
 
-// #rw(fn: rust_clone_in_loop) SyntaxEditor owns both replacement syntax nodes for each edit
 fn fix_dbg(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
     let mut changed = false;
@@ -94,5 +93,5 @@ fn macro_inner(call: &ast::MacroCall) -> Option<String> {
 
 crate::rulewright_ast_test!(check_dbg, {
     crate::example_tests!(EXAMPLES, check_dbg);
-    crate::fix_tests!(ast_tree, check_dbg, fix_dbg);
+    crate::fix_tests!(EXAMPLES, ast_tree, check_dbg, fix_dbg);
 });

@@ -45,6 +45,7 @@ pub struct AstCtx<'a> {
     pub file: &'a FileCtx<'a>,
     pub root: &'a SourceFile,
     pub line_index: &'a LineIndex,
+    nodes: Vec<SyntaxNode>,
     pub(crate) test_only_file: bool,
 }
 
@@ -89,12 +90,37 @@ where
     }
 }
 
+impl RustLocation for SyntaxNode {
+    fn line_in(&self, ctx: &AstCtx<'_>) -> usize {
+        ctx.line_index.line_col(self.text_range().start()).line as usize + 1
+    }
+
+    fn column_in(&self, ctx: &AstCtx<'_>) -> Option<usize> {
+        Some(ctx.line_index.line_col(self.text_range().start()).col as usize + 1)
+    }
+}
+
 impl AstCtx<'_> {
+    pub(crate) fn new<'a>(
+        file: &'a FileCtx<'a>,
+        root: &'a SourceFile,
+        line_index: &'a LineIndex,
+        test_only_file: bool,
+    ) -> AstCtx<'a> {
+        AstCtx {
+            file,
+            root,
+            line_index,
+            nodes: root.syntax().descendants().collect(),
+            test_only_file,
+        }
+    }
+
     pub fn nodes<'a, N>(&'a self) -> impl Iterator<Item = N> + 'a
     where
         N: AstNode + 'a,
     {
-        self.root.syntax().descendants().filter_map(N::cast)
+        self.nodes.iter().cloned().filter_map(N::cast)
     }
 
     pub fn is_in_test<N>(&self, node: &N) -> bool
@@ -135,6 +161,7 @@ impl std::fmt::Debug for AstCtx<'_> {
             .field("file", &self.file)
             .field("root", &"<ra_ap_syntax::SourceFile>")
             .field("line_index", &self.line_index)
+            .field("node_count", &self.nodes.len())
             .field("test_only_file", &self.test_only_file)
             .finish()
     }
@@ -165,28 +192,45 @@ pub(crate) fn analyze(
         rel: file.rel,
         path: file.path,
         package_name: file.package_name,
+        package_publishable: file.package_publishable,
         lines: &visible_lines,
         contents: file.contents,
         config: file.config,
     };
     let directive_lines = scanner::directive_source_lines(file.contents, file.lines);
-    let suppressed = ignore::suppressed_lines(
+    let mut suppressed = ignore::suppressed_lines(
         line_file.rel,
         &directive_lines,
         &mut ignore_errors,
         Some(registered_names),
     );
-    let workspace_suppressions = suppressed.clone();
+    let report_directive_errors = !file.config.allows_suppressions()
+        || rules.iter().any(|rule| rule.info.name == DIRECTIVE_RULE)
+            && !matches_ignore(file.rel, file.config.ignore_patterns(DIRECTIVE_RULE));
 
-    if rules.iter().any(|rule| rule.info.name == DIRECTIVE_RULE)
-        && !matches_ignore(file.rel, file.config.ignore_patterns(DIRECTIVE_RULE))
-    {
+    if report_directive_errors {
         analysis.violations.extend(
             ignore_errors
                 .into_iter()
                 .map(|violation| violation.with_rule(DIRECTIVE_RULE)),
         );
     }
+
+    if !file.config.allows_suppressions() {
+        analysis
+            .violations
+            .extend(suppressed.entries.iter().map(|entry| {
+                crate::violation(
+                    file.rel,
+                    entry.line,
+                    "source suppression directives are disabled by rulewright.toml; fix the code or configure the shared rule scope",
+                )
+                .with_rule(DIRECTIVE_RULE)
+            }));
+        suppressed = ignore::Suppressions::default();
+    }
+
+    let workspace_suppressions = suppressed.clone();
 
     for rule in rules {
         let (check, rule_file) = match rule.check {
@@ -199,12 +243,16 @@ pub(crate) fn analyze(
             continue;
         }
 
-        let violations = ignore::filter(&suppressed, tagged(rule, check(rule_file)));
+        let mut violations = ignore::filter(&suppressed, tagged(rule, check(rule_file)));
 
-        if fix_mode && let Some(RuleFix::RustLine(fix)) = rule.fix {
-            collect_fixes(&mut analysis, file.rel, &violations, |violation| {
-                fix(rule_file, violation)
-            });
+        if let Some(RuleFix::RustLine(fix)) = rule.fix {
+            collect_fixes(
+                &mut analysis,
+                file.rel,
+                &mut violations,
+                fix_mode,
+                |violation| fix(rule_file, violation),
+            );
         }
 
         analysis.violations.extend(violations);
@@ -212,12 +260,7 @@ pub(crate) fn analyze(
 
     if let Some(root) = ra_root {
         let line_index = LineIndex::new(file.contents);
-        let ctx = AstCtx {
-            file,
-            root: &root,
-            line_index: &line_index,
-            test_only_file,
-        };
+        let ctx = AstCtx::new(file, &root, &line_index, test_only_file);
 
         for rule in rules {
             let RuleCheck::RustAst(check) = rule.check else {
@@ -228,28 +271,35 @@ pub(crate) fn analyze(
                 continue;
             }
 
-            let violations = ignore::filter(&suppressed, tagged(rule, check(&ctx)));
+            let mut violations = ignore::filter(&suppressed, tagged(rule, check(&ctx)));
 
-            if fix_mode {
-                match rule.fix {
-                    Some(RuleFix::RustAst(fix)) => {
-                        collect_fixes(&mut analysis, file.rel, &violations, |violation| {
-                            fix(&ctx, violation)
+            match rule.fix {
+                Some(RuleFix::RustAst(fix)) => {
+                    collect_fixes(
+                        &mut analysis,
+                        file.rel,
+                        &mut violations,
+                        fix_mode,
+                        |violation| fix(&ctx, violation),
+                    );
+                }
+
+                Some(RuleFix::RustAstTree(fix)) => {
+                    mark_tree_fixability(&mut violations, |finding| fix(&ctx, finding));
+
+                    if fix_mode
+                        && !violations.is_empty()
+                        && let Some(replacement) = fix(&ctx, &violations)
+                    {
+                        analysis.tree_fixes.push(crate::infra::fix::TreeFix {
+                            rel: file.rel.to_owned(),
+                            rule: rule.info.name,
+                            replacement,
                         });
                     }
-                    Some(RuleFix::RustAstTree(fix)) => {
-                        if !violations.is_empty()
-                            && let Some(replacement) = fix(&ctx, &violations)
-                        {
-                            analysis.tree_fixes.push(crate::infra::fix::TreeFix {
-                                rel: file.rel.to_owned(),
-                                rule: rule.info.name,
-                                replacement,
-                            });
-                        }
-                    }
-                    _ => {}
                 }
+
+                _ => {}
             }
 
             analysis.violations.extend(violations);
@@ -294,6 +344,7 @@ pub(crate) fn audit_suppressions(
         rel: file.rel,
         path: file.path,
         package_name: file.package_name,
+        package_publishable: file.package_publishable,
         lines: &visible_lines,
         contents: file.contents,
         config: file.config,
@@ -310,12 +361,8 @@ pub(crate) fn audit_suppressions(
         return Err(SuppressionAuditError::InvalidDirectives(directive_errors));
     }
 
-    let ast = AstCtx {
-        file: &audit_file,
-        root: &root,
-        line_index: &LineIndex::new(file.contents),
-        test_only_file: false,
-    };
+    let line_index = LineIndex::new(file.contents);
+    let ast = AstCtx::new(&audit_file, &root, &line_index, false);
     let mut raw_violations = Vec::new();
 
     for rule in rules {
@@ -469,6 +516,7 @@ fn cfg_requires_test(predicate: &ast::CfgPredicate) -> bool {
         ast::CfgPredicate::CfgAtom(atom) => atom
             .ident_token()
             .is_some_and(|identifier| identifier.text() == "test"),
+
         ast::CfgPredicate::CfgComposite(composite) => {
             let operator = composite.keyword().map(|keyword| keyword.text().to_owned());
             let predicates: Vec<ast::CfgPredicate> = composite.cfg_predicates().collect();
@@ -497,15 +545,34 @@ fn tagged(rule: &Rule, violations: Vec<Violation>) -> Vec<Violation> {
 fn collect_fixes(
     analysis: &mut Analysis,
     rel: &str,
-    violations: &[Violation],
+    violations: &mut [Violation],
+    retain_fixes: bool,
     fix: impl Fn(&Violation) -> Option<crate::Fix>,
 ) {
-    analysis.fixes.extend(
-        violations
-            .iter()
-            .filter_map(fix)
-            .map(|fix| (rel.to_owned(), fix)),
-    );
+    for violation in violations {
+        let Some(edit) = fix(violation) else {
+            continue;
+        };
+
+        violation.mark_fixable();
+
+        if retain_fixes {
+            analysis.fixes.push((rel.to_owned(), edit));
+        }
+    }
+}
+
+fn mark_tree_fixability(
+    violations: &mut [Violation],
+    fix: impl Fn(&[Violation]) -> Option<String>,
+) {
+    for violation in violations {
+        let fixable = fix(std::slice::from_ref(&*violation)).is_some();
+
+        if fixable {
+            violation.mark_fixable();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -527,6 +594,7 @@ mod tests {
             rel: "adapter.rs",
             path: Path::new("adapter.rs"),
             package_name: None,
+            package_publishable: None,
             lines: &lines,
             contents: source,
             config: &config,
@@ -541,6 +609,48 @@ mod tests {
     }
 
     #[gtest]
+    fn fixability_is_recorded_per_finding_without_retaining_edits() -> Result<()> {
+        let mut analysis = Analysis::default();
+        let mut violations = vec![
+            crate::violation("fixture.rs", 1, "fixable"),
+            crate::violation("fixture.rs", 2, "manual"),
+        ];
+
+        collect_fixes(
+            &mut analysis,
+            "fixture.rs",
+            &mut violations,
+            false,
+            |violation| {
+                (violation.line == 1).then(|| crate::Fix {
+                    start_line: 1,
+                    end_line: 1,
+                    replacement: "fixed".to_owned(),
+                })
+            },
+        );
+
+        verify_true!(violations[0].is_fixable())?;
+        verify_false!(violations[1].is_fixable())?;
+        verify_true!(analysis.fixes.is_empty())
+    }
+
+    #[gtest]
+    fn coordinated_fixability_is_evaluated_one_finding_at_a_time() -> Result<()> {
+        let mut violations = vec![
+            crate::violation("fixture.rs", 1, "fixable"),
+            crate::violation("fixture.rs", 2, "manual"),
+        ];
+
+        mark_tree_fixability(&mut violations, |findings| {
+            (findings.len() == 1 && findings[0].line == 1).then(|| "fixed".to_owned())
+        });
+
+        verify_true!(violations[0].is_fixable())?;
+        verify_false!(violations[1].is_fixable())
+    }
+
+    #[gtest]
     fn clean_fixture_has_no_violations() -> Result<()> {
         let analysis = analyze_all(include_str!("../../../tests/fixtures/clean.rs"));
 
@@ -551,7 +661,8 @@ mod tests {
 
     #[gtest]
     fn dirty_source_reports_registered_rules() -> Result<()> {
-        let analysis = analyze_all("fn f() { dbg!(1); let value = 42; }");
+        let analysis =
+            analyze_all("fn f() { dbg!(1); let first = 42; let second = 42; let third = 42; }");
         let rules: Vec<_> = analysis
             .violations
             .iter()
@@ -603,7 +714,7 @@ mod tests {
     }
 
     #[gtest]
-    fn line_rules_ignore_examples_and_test_literals() -> Result<()> {
+    fn rules_ignore_examples_and_test_literals() -> Result<()> {
         let source = r#"
 use crate::Example;
 
@@ -625,6 +736,7 @@ mod tests {
             rel: "fixture_regions.rs",
             path: Path::new("fixture_regions.rs"),
             package_name: None,
+            package_publishable: None,
             lines: &lines,
             contents: source,
             config: &config,
@@ -663,6 +775,7 @@ mod tests {
             rel: "production.rs",
             path: Path::new("production.rs"),
             package_name: None,
+            package_publishable: None,
             lines: &lines,
             contents: source,
             config: &config,
@@ -698,6 +811,7 @@ mod tests {
             rel: "fixture.rs",
             path: Path::new("fixture.rs"),
             package_name: None,
+            package_publishable: None,
             lines: &lines,
             contents: source,
             config: &config,
@@ -735,6 +849,7 @@ mod tests {
             rel: "ignored/fixture.rs",
             path: Path::new("ignored/fixture.rs"),
             package_name: None,
+            package_publishable: None,
             lines: &lines,
             contents: source,
             config: &config,

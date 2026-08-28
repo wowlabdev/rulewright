@@ -2,10 +2,13 @@
 #
 # Every registered rule MUST appear here. Omitting a rule is an error.
 # Set `enabled = false` to disable a rule without removing its config.
+# Set `allow_suppressions = false` to reject every source-level #rw(...) directive.
 # Run `rulewright --init` to generate a fresh config with all rules.
 #
 # [glob_sets] defines named pattern collections.
-# Rules reference them by name in their `ignore` list.
+# Rules can use literal patterns or reference a named set. Prefixing a set with `@` is explicit.
+
+allow_suppressions = true
 
 [rules.rust_abs_home_path]
 enabled = true
@@ -20,10 +23,6 @@ enabled = false
 ignore = []
 
 [rules.rust_allow_reason]
-enabled = true
-ignore = []
-
-[rules.rust_sorted]
 enabled = true
 ignore = []
 
@@ -104,14 +103,11 @@ ignore = []
 enabled = true
 ignore = []
 
-[rules.rust_clone_in_loop]
-enabled = false
-ignore = []
-
 [rules.rust_closure_dense_method_chain]
-enabled = false
+enabled = true
 ignore = []
-threshold = 3
+chain_threshold = 12
+closure_threshold = 6
 
 [rules.rust_closure_param_position]
 enabled = true
@@ -143,14 +139,6 @@ types = [
     "TcpStream",
     "UnixStream",
 ]
-
-[rules.rust_const_fn_candidate]
-enabled = true
-ignore = []
-
-[rules.rust_const_needs_doc]
-enabled = false
-ignore = []
 
 [rules.rust_conversion_self_convention]
 enabled = false
@@ -263,6 +251,7 @@ ignore = []
 [rules.rust_expect_over_allow]
 enabled = true
 ignore = []
+allowed_lints = []
 
 [rules.rust_fallible_in_iterator]
 enabled = true
@@ -394,6 +383,7 @@ allowed = [
     "0.0",
     "1.0",
 ]
+min_occurrences = 3
 
 [rules.rust_manual_async_fn]
 enabled = true
@@ -410,10 +400,6 @@ ignore = []
 [rules.rust_match_layout]
 enabled = true
 ignore = []
-checks = [
-    "complex-matches",
-    "multiline-arm-spacing",
-]
 
 [rules.rust_max_fn_lines]
 enabled = true
@@ -451,10 +437,6 @@ ignore = []
 
 [rules.rust_module_docs]
 enabled = true
-ignore = []
-
-[rules.rust_module_prefix_in_name]
-enabled = false
 ignore = []
 
 [rules.rust_multiple_inherent_impl]
@@ -587,20 +569,27 @@ ignore = []
 [rules.rust_sensitive_debug]
 enabled = true
 ignore = []
-markers = [
-  "api_key",
-  "authorization",
-  "bearer",
-  "credential",
-  "credentials",
-  "password",
-  "passwd",
-  "private_key",
-  "secret",
-  "signing_key",
-  "token",
-]
 allowed_fields = []
+redacted_types = [
+    "Secret",
+    "SecretBox",
+    "SecretString",
+    "SecretVec",
+    "Sensitive",
+]
+markers = [
+    "api_key",
+    "authorization",
+    "bearer",
+    "credential",
+    "credentials",
+    "password",
+    "passwd",
+    "private_key",
+    "secret",
+    "signing_key",
+    "token",
+]
 
 [rules.rust_similar_fns]
 enabled = true
@@ -608,13 +597,11 @@ ignore = []
 jaccard_percent = 85
 min_tokens = 40
 
-[rules.rust_similar_structs]
+[rules.rust_single_item_path]
 enabled = true
 ignore = []
-jaccard_percent = 80
-min_fields = 4
 
-[rules.rust_single_item_path]
+[rules.rust_sorted]
 enabled = true
 ignore = []
 
@@ -676,7 +663,7 @@ max_root_items = 40
 min_modules_for_empty_root = 8
 
 [rules.rust_unchecked_indexing]
-enabled = true
+enabled = false
 ignore = []
 
 [rules.rust_unnecessary_collect]

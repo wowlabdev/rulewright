@@ -23,8 +23,8 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     inline_test_module_size,
-    "Flag `#[cfg(test)] mod` blocks spanning more than threshold lines.",
-    "Oversized inline test modules drown the business logic in the same file; tests touching only public API are integration tests and belong under `tests/`.",
+    "Flag inline `#[cfg(test)] mod` blocks exceeding the configured nonblank-line threshold.",
+    "Oversized inline test modules drown the implementation in the same file. Move private unit tests to a sibling `#[path]` module, or public-API tests to `tests/`.",
     Low,
     params {
         threshold: i64 = 200
@@ -32,19 +32,17 @@ crate::ast_rule!(
 );
 
 fn check_inline_test_module_size(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let threshold = ctx
-        .file
-        .config
-        .get_usize("rust_inline_test_module_size", &PARAMS[0]);
+    let threshold = ctx.file.config.get_usize(
+        "rust_inline_test_module_size",
+        &INLINE_TEST_MODULE_SIZE_PARAMS[0],
+    );
 
     ctx.nodes::<ast::Module>()
         .filter(is_cfg_test_module)
         .filter_map(|module| {
             let item_list = module.item_list()?;
-            let range = item_list.syntax().text_range();
-            let start = ctx.line_index.line_col(range.start()).line as usize + 1;
-            let end = ctx.line_index.line_col(range.end()).line as usize + 1;
-            let lines = end.saturating_sub(start);
+            let source = item_list.syntax().text().to_string();
+            let lines = source.lines().filter(|line| !line.trim().is_empty()).count();
 
             if lines <= threshold {
                 return None;
@@ -55,7 +53,7 @@ fn check_inline_test_module_size(ctx: &AstCtx<'_>) -> Vec<Violation> {
             Some(ctx.violation(
                 &name,
                 format!(
-                    "#[cfg(test)] mod `{name}` is {lines} lines long (max {threshold}) — move public-API tests under tests/"
+                    "#[cfg(test)] mod `{name}` has {lines} nonblank lines (max {threshold}) — move private unit tests to a sibling #[path] module or public-API tests under tests/"
                 ),
             ))
         })
@@ -110,5 +108,18 @@ crate::rulewright_ast_test!(check_inline_test_module_size, {
         verify_true!(v.is_empty())?;
 
         Ok(())
+    }
+
+    #[gtest]
+    fn blank_lines_do_not_consume_the_module_budget() -> Result<()> {
+        let mut source = String::from("#[cfg(test)]\nmod tests {\n");
+
+        for i in 0..190 {
+            let _ = writeln!(source, "    fn t{i}() {{}}\n");
+        }
+
+        source.push_str("}\n");
+
+        verify_true!(run(&source).is_empty())
     }
 });

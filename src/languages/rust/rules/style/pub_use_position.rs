@@ -115,8 +115,6 @@ fn has_blank_line(ctx: &AstCtx<'_>, before: &ast::Use, after: &ast::Use) -> bool
         .is_some_and(|between| between.matches('\n').count() >= BLANK_LINE_NEWLINES)
 }
 
-// #rw(fn: rust_alloc_in_loop) each public re-export needs a parsed rustfmt-stable replacement
-// #rw(fn: rust_clone_in_loop) syntax-editor sorting requires detached copies of source items
 fn fix_pub_use_position(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
     let uses = leading_uses(&root);
@@ -168,7 +166,12 @@ fn has_rustfmt_skip(item: &ast::Use) -> bool {
 
 crate::rulewright_ast_test!(check_pub_use_position, {
     crate::example_tests!(EXAMPLES, check_pub_use_position);
-    crate::fix_tests!(ast_tree, check_pub_use_position, fix_pub_use_position);
+    crate::fix_tests!(
+        EXAMPLES,
+        ast_tree,
+        check_pub_use_position,
+        fix_pub_use_position
+    );
 
     #[gtest]
     fn fix_marks_public_uses_to_keep_nightly_rustfmt_from_regrouping_them() -> Result<()> {

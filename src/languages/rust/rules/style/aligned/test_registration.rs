@@ -2,7 +2,7 @@ use super::*;
 
 crate::rulewright_test!(check_aligned, {
     crate::example_tests!(EXAMPLES, check_aligned);
-    crate::fix_tests!(line, check_aligned, fix_aligned);
+    crate::fix_tests!(EXAMPLES, line, check_aligned, fix_aligned);
 
     #[gtest]
     fn arrow_aligned_passes() -> Result<()> {

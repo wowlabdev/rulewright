@@ -1,4 +1,7 @@
-use ra_ap_syntax::ast::{self, HasName};
+use ra_ap_syntax::{
+    AstNode,
+    ast::{self, HasName},
+};
 
 use crate::{AstCtx, Example, Violation};
 
@@ -34,21 +37,29 @@ const EXAMPLES: &[Example] = &[
         code: "#[cfg(test)]\nmod tests {\n  fn f(a: bool, b: bool) {}\n}",
         pass: true,
     },
+    Example {
+        label: "trait implementation preserves required signature",
+        code: "struct Runtime;\nimpl Backend for Runtime { fn select(&mut self, condition: bool, yes: bool, no: bool) -> bool { if condition { yes } else { no } } }",
+        pass: true,
+    },
 ];
 
 crate::ast_rule!(
     bool_params,
     "Flag functions with threshold+ `bool` parameters (error-prone API design).",
-    "Multiple bool parameters are easy to mix up at call sites. Use an enum to make each argument self-documenting.",
+    "Multiple bool parameters are easy to mix up at call sites. Replace each real mode choice with a named enum or options type; do not wrap booleans without making the call site more expressive.",
     Medium,
     params { threshold: i64 = 2 },
 );
 
 fn check_bool_params(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let threshold = ctx.file.config.get_usize("rust_bool_params", &PARAMS[0]);
+    let threshold = ctx
+        .file
+        .config
+        .get_usize("rust_bool_params", &BOOL_PARAMS_PARAMS[0]);
 
     ctx.nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function))
+        .filter(|function| !ctx.is_in_test(function) && !is_trait_method(function))
         .filter_map(|function| {
             let bool_count = function
                 .param_list()?
@@ -69,6 +80,14 @@ fn check_bool_params(ctx: &AstCtx<'_>) -> Vec<Violation> {
             })?
         })
         .collect()
+}
+
+fn is_trait_method(function: &ast::Fn) -> bool {
+    function
+        .syntax()
+        .ancestors()
+        .find_map(ast::Impl::cast)
+        .is_some_and(|item| item.trait_().is_some())
 }
 
 fn is_bool_type(ty: &ast::Type) -> bool {

@@ -135,7 +135,6 @@ fn order_conflicts(earlier: &[ParamPair], later: &[ParamPair]) -> bool {
         .any(|(a, b)| a > b)
 }
 
-// #rw(fn: rust_alloc_in_loop) function names are retained as owned cross-function comparison keys
 fn check_param_order_consistency(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let mut seen = Vec::new();
     let mut violations = Vec::new();

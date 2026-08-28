@@ -80,6 +80,7 @@ fn check_ok_or_eager(ctx: &AstCtx<'_>) -> Vec<Violation> {
 fn is_eager_expr(expr: &ast::Expr) -> bool {
     match expr {
         ast::Expr::CallExpr(_) | ast::Expr::MacroExpr(_) => true,
+
         ast::Expr::MethodCallExpr(call) => {
             let Some(name) = call.name_ref().map(|name| name.text().to_string()) else {
                 return false;
@@ -90,6 +91,7 @@ fn is_eager_expr(expr: &ast::Expr) -> bool {
                 "len" | "is_empty" | "clone" | "to_owned" | "to_string" | "into"
             )
         }
+
         _ => false,
     }
 }
@@ -110,5 +112,5 @@ fn fix_ok_or_eager(ctx: &AstCtx<'_>, v: &Violation) -> Option<Fix> {
 
 crate::rulewright_ast_test!(check_ok_or_eager, {
     crate::example_tests!(EXAMPLES, check_ok_or_eager);
-    crate::fix_tests!(ast, check_ok_or_eager, fix_ok_or_eager);
+    crate::fix_tests!(EXAMPLES, ast, check_ok_or_eager, fix_ok_or_eager);
 });

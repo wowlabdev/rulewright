@@ -66,7 +66,7 @@ fn check_large_stack_array(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let max_stack_bytes = ctx
         .file
         .config
-        .get_u64("rust_large_stack_array", &PARAMS[0]);
+        .get_u64("rust_large_stack_array", &LARGE_STACK_ARRAY_PARAMS[0]);
     let type_arrays = ctx
         .nodes::<ast::ArrayType>()
         .filter(|array| !ctx.is_in_test(array))

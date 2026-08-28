@@ -118,7 +118,7 @@ fn check_foreign_reexports(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let allowed = ctx
         .file
         .config
-        .get_str_array("rust_foreign_reexports", &PARAMS[0]);
+        .get_str_array("rust_foreign_reexports", &FOREIGN_REEXPORTS_PARAMS[0]);
     let members = ctx.file.config.workspace().members(ctx.file.path);
     let local_mods = local_modules(ctx);
 
@@ -163,7 +163,6 @@ fn is_internal_root(root: &str, members: &WorkspaceMembers) -> bool {
     BUILTIN_ROOTS.contains(&root) || members.is_member_root(root)
 }
 
-// #rw(fn: rust_clone_in_loop) iterative traversal owns each qualified path while retaining name nodes
 fn collect_roots(tree: ast::UseTree) -> Vec<ast::NameRef> {
     let mut out = Vec::new();
     let mut stack = vec![tree];

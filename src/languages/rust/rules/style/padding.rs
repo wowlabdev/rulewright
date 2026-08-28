@@ -1,12 +1,11 @@
 #[cfg(test)]
 use googletest::prelude::*;
-use ra_ap_syntax::{
-    AstNode, SyntaxKind, SyntaxNode, SyntaxToken, ast, syntax_editor::SyntaxEditor,
-};
+use ra_ap_syntax::{AstNode, SyntaxNode, SyntaxToken, ast, syntax_editor::SyntaxEditor};
 
 use crate::{AstCtx, Example, Violation};
 
-const BLANK_LINE_NEWLINES: usize = 2;
+use super::support::{gap_before_attached_comment, has_blank_line};
+
 const CONTROL_FLOW: &str = "control-flow";
 const FUNCTIONS: &str = "functions";
 const LET_RUNS: &str = "let-runs";
@@ -41,6 +40,11 @@ const EXAMPLES: &[Example] = &[
         label: "tail expression needs padding",
         code: "fn value() -> usize {\n    let value = 1;\n    value\n}",
         pass: false,
+    },
+    Example {
+        label: "effect followed by tail expression stays compact",
+        code: "fn value() -> Result<(), Error> {\n    verify_state()?;\n    finish()\n}",
+        pass: true,
     },
     Example {
         label: "let run needs following padding",
@@ -108,23 +112,28 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
+        label: "block-like control expression separates let runs",
+        code: "fn run(mut bits: u32) {\n    while bits != 0 {\n        let index = bits.trailing_zeros();\n\n        if index > 10 {\n            observe(index);\n        }\n\n        bits &= bits - 1;\n    }\n}",
+        pass: true,
+    },
+    Example {
         label: "single-expression closure is exempt",
         code: "fn run() {\n    consume(|| { 1 });\n}",
         pass: true,
     },
     Example {
         label: "directive stays attached to multiline control",
-        code: "fn run(flag: bool) {\n    let value = String::new();\n    // #rw(rust_clone_in_loop) bounded control path\n    if flag {\n        consume(value.clone());\n    }\n}",
+        code: "fn run(flag: bool) {\n    let value = String::new();\n    // #rw(rust_panic) bounded control path\n    if flag {\n        consume(value.clone());\n    }\n}",
         pass: false,
     },
     Example {
         label: "directive stays attached to tail expression",
-        code: "fn value() -> usize {\n    let value = 1;\n    // #rw(rust_clone_in_loop) representative fixture\n    value\n}",
+        code: "fn value() -> usize {\n    let value = 1;\n    // #rw(rust_panic) representative fixture\n    value\n}",
         pass: false,
     },
     Example {
         label: "block directive stays attached to loop",
-        code: "fn run(values: &[String]) {\n    let mut copies = Vec::new();\n    // #rw(block: rust_clone_in_loop) bounded fixture\n    for value in values {\n        copies.push(value.clone());\n    }\n}",
+        code: "fn run(values: &[String]) {\n    let mut copies = Vec::new();\n    // #rw(block: rust_panic) bounded fixture\n    for value in values {\n        copies.push(value.clone());\n    }\n}",
         pass: false,
     },
 ];
@@ -132,7 +141,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_tree_rule!(
     padding,
     "Require configurable blank-line boundaries between functions and distinct statement groups.",
-    "Consistent vertical separation makes functions, control flow, setup runs, and tail values easier to scan.",
+    "Consistent vertical separation makes functions, control flow, logical setup stages, and tail values easier to scan. Keep attributes, suppression directives, safety comments, and invariant explanations attached to the code they justify instead of inserting whitespace through those relationships.",
     Low,
     fix_padding,
     params {
@@ -167,12 +176,15 @@ struct Entry {
 
 fn check_padding(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let mut violations = Vec::new();
-    let boundaries = ctx.file.config.get_str_array("rust_padding", &PARAMS[0]);
+    let boundaries = ctx
+        .file
+        .config
+        .get_str_array("rust_padding", &PADDING_PARAMS[0]);
 
     for list in ctx.nodes::<ast::StmtList>() {
         for entry in missing_gaps(&list, &boundaries) {
             violations.push(ctx.violation(
-                &list,
+                entry.syntax.clone(),
                 format!("blank line required before {}", entry_label(&entry)),
             ));
         }
@@ -191,19 +203,28 @@ fn check_padding(ctx: &AstCtx<'_>) -> Vec<Violation> {
 }
 
 fn entries(list: &ast::StmtList) -> Vec<Entry> {
-    let mut entries: Vec<Entry> = list.statements().map(entry_from_stmt).collect();
+    let tail = list.tail_expr();
 
-    if let Some(tail) = list.tail_expr() {
-        entries.push(Entry {
-            is_control: is_control(&tail),
-            syntax: tail.syntax().clone(),
-            is_let: false,
-            is_return: matches!(tail, ast::Expr::ReturnExpr(_)),
-            is_tail: true,
-        });
-    }
+    list.syntax()
+        .children()
+        .filter_map(|child| {
+            if let Some(statement) = ast::Stmt::cast(child.clone()) {
+                return Some(entry_from_stmt(statement));
+            }
 
-    entries
+            let expression = ast::Expr::cast(child)?;
+
+            Some(Entry {
+                is_control: is_control(&expression),
+                is_return: matches!(expression, ast::Expr::ReturnExpr(_)),
+                is_tail: tail
+                    .as_ref()
+                    .is_some_and(|tail| tail.syntax() == expression.syntax()),
+                syntax: expression.syntax().clone(),
+                is_let: false,
+            })
+        })
+        .collect()
 }
 
 #[expect(
@@ -240,10 +261,9 @@ fn is_control(expression: &ast::Expr) -> bool {
 }
 
 fn padding_gap_token(current: &SyntaxNode) -> Option<SyntaxToken> {
-    gap_before_attached(current, |token| token.kind() == SyntaxKind::COMMENT)
+    gap_before_attached_comment(current)
 }
 
-// #rw(fn: rust_unchecked_indexing) enumeration skips index zero before reading the preceding entry
 fn missing_gaps(list: &ast::StmtList, boundaries: &[String]) -> Vec<Entry> {
     let entries = entries(list);
 
@@ -254,7 +274,9 @@ fn missing_gaps(list: &ast::StmtList, boundaries: &[String]) -> Vec<Entry> {
         .filter(|(index, current)| {
             let previous = &entries[index - 1];
             let required = boundary_enabled(boundaries, RETURNS) && current.is_return
-                || boundary_enabled(boundaries, TAIL_EXPRESSIONS) && current.is_tail
+                || boundary_enabled(boundaries, TAIL_EXPRESSIONS)
+                    && current.is_tail
+                    && previous.is_let
                 || boundary_enabled(boundaries, LET_RUNS) && previous.is_let && !current.is_let
                 || boundary_enabled(boundaries, CONTROL_FLOW)
                     && (current.is_control || previous.is_control);
@@ -280,50 +302,7 @@ fn missing_function_gaps(ctx: &AstCtx<'_>) -> Vec<ast::Fn> {
 }
 
 fn function_gap_token(current: &SyntaxNode) -> Option<SyntaxToken> {
-    gap_before_attached(current, |token| token.kind() == SyntaxKind::COMMENT)
-}
-
-fn gap_before_attached(
-    current: &SyntaxNode,
-    is_attached: impl Fn(&SyntaxToken) -> bool,
-) -> Option<SyntaxToken> {
-    let mut gap = gap_token(current)?;
-
-    if !gap.text().contains('\n')
-        && let Some(comment) = current
-            .first_token()
-            .filter(|token| token.kind() == SyntaxKind::COMMENT)
-        && let Some(after_comment) = comment
-            .next_token()
-            .filter(|token| token.kind() == SyntaxKind::WHITESPACE)
-    {
-        return Some(after_comment);
-    }
-
-    while !has_blank_line(&gap) {
-        let Some(comment) = gap
-            .prev_token()
-            .filter(|token| is_attached(token) && comment_starts_own_line(token))
-        else {
-            break;
-        };
-        let Some(previous_gap) = comment
-            .prev_token()
-            .filter(|token| token.kind() == SyntaxKind::WHITESPACE)
-        else {
-            break;
-        };
-
-        gap = previous_gap;
-    }
-
-    Some(gap)
-}
-
-fn comment_starts_own_line(comment: &SyntaxToken) -> bool {
-    comment.prev_token().is_some_and(|previous| {
-        previous.kind() == SyntaxKind::WHITESPACE && previous.text().contains('\n')
-    })
+    gap_before_attached_comment(current)
 }
 
 fn boundary_enabled(boundaries: &[String], boundary: &str) -> bool {
@@ -333,17 +312,6 @@ fn boundary_enabled(boundaries: &[String], boundary: &str) -> bool {
     );
 
     boundaries.iter().any(|configured| configured == boundary)
-}
-
-fn gap_token(current: &SyntaxNode) -> Option<SyntaxToken> {
-    current
-        .prev_sibling_or_token()
-        .and_then(ra_ap_syntax::NodeOrToken::into_token)
-        .filter(|token| token.kind() == SyntaxKind::WHITESPACE)
-}
-
-fn has_blank_line(token: &SyntaxToken) -> bool {
-    token.text().matches('\n').count() >= BLANK_LINE_NEWLINES
 }
 
 const fn entry_label(entry: &Entry) -> &'static str {
@@ -358,10 +326,12 @@ const fn entry_label(entry: &Entry) -> &'static str {
     }
 }
 
-// #rw(fn: rust_alloc_in_loop, rust_clone_in_loop) each missing whitespace boundary needs an owned replacement token
 fn fix_padding(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
-    let boundaries = ctx.file.config.get_str_array("rust_padding", &PARAMS[0]);
+    let boundaries = ctx
+        .file
+        .config
+        .get_str_array("rust_padding", &PADDING_PARAMS[0]);
     let mut changed = false;
 
     for list in root.syntax().descendants().filter_map(ast::StmtList::cast) {
@@ -399,22 +369,22 @@ fn fix_padding(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
 
 crate::rulewright_ast_test!(check_padding, {
     crate::example_tests!(EXAMPLES, check_padding);
-    crate::fix_tests!(ast_tree, check_padding, fix_padding);
+    crate::fix_tests!(EXAMPLES, ast_tree, check_padding, fix_padding);
 
     #[gtest]
     fn fix_places_padding_before_attached_comments() -> Result<()> {
         let cases = [
             (
-                "fn run(flag: bool) {\n    let value = String::new();\n    // #rw(rust_clone_in_loop) bounded control path\n    if flag {\n        consume(value.clone());\n    }\n}",
-                "fn run(flag: bool) {\n    let value = String::new();\n\n    // #rw(rust_clone_in_loop) bounded control path\n    if flag {\n        consume(value.clone());\n    }\n}",
+                "fn run(flag: bool) {\n    let value = String::new();\n    // #rw(rust_panic) bounded control path\n    if flag {\n        consume(value.clone());\n    }\n}",
+                "fn run(flag: bool) {\n    let value = String::new();\n\n    // #rw(rust_panic) bounded control path\n    if flag {\n        consume(value.clone());\n    }\n}",
             ),
             (
-                "fn value() -> usize {\n    let value = 1;\n    // #rw(rust_clone_in_loop) representative fixture\n    value\n}",
-                "fn value() -> usize {\n    let value = 1;\n\n    // #rw(rust_clone_in_loop) representative fixture\n    value\n}",
+                "fn value() -> usize {\n    let value = 1;\n    // #rw(rust_panic) representative fixture\n    value\n}",
+                "fn value() -> usize {\n    let value = 1;\n\n    // #rw(rust_panic) representative fixture\n    value\n}",
             ),
             (
-                "fn run(values: &[String]) {\n    let mut copies = Vec::new();\n    // #rw(block: rust_clone_in_loop) bounded fixture\n    for value in values {\n        copies.push(value.clone());\n    }\n}",
-                "fn run(values: &[String]) {\n    let mut copies = Vec::new();\n\n    // #rw(block: rust_clone_in_loop) bounded fixture\n    for value in values {\n        copies.push(value.clone());\n    }\n}",
+                "fn run(values: &[String]) {\n    let mut copies = Vec::new();\n    // #rw(block: rust_panic) bounded fixture\n    for value in values {\n        copies.push(value.clone());\n    }\n}",
+                "fn run(values: &[String]) {\n    let mut copies = Vec::new();\n\n    // #rw(block: rust_panic) bounded fixture\n    for value in values {\n        copies.push(value.clone());\n    }\n}",
             ),
             (
                 "fn visit(points: &[Point]) {\n    let first = &points[0];\n    // BOUNDS: the empty case returned above, so index one starts the remaining points.\n    for point in &points[1..] {\n        consume(first, point);\n    }\n}",
@@ -457,7 +427,7 @@ crate::rulewright_ast_test!(check_padding, {
     #[gtest]
     fn configured_boundaries_can_disable_function_padding() -> Result<()> {
         let source = "fn one() {}\nfn two() {}";
-        let mut config = crate::Config::generate_default(&[("rust_padding", PARAMS)]);
+        let mut config = crate::Config::generate_default(&[("rust_padding", PADDING_PARAMS)]);
 
         config
             .rules
@@ -473,6 +443,7 @@ crate::rulewright_ast_test!(check_padding, {
             rel: "fixture.rs",
             path: crate::Path::new("fixture.rs"),
             package_name: None,
+            package_publishable: None,
             lines: &lines,
             contents: source,
             config: &config,
@@ -480,12 +451,7 @@ crate::rulewright_ast_test!(check_padding, {
         let parse = ra_ap_syntax::SourceFile::parse(source, ra_ap_syntax::Edition::Edition2024);
         let root = parse.tree();
         let line_index = line_index::LineIndex::new(source);
-        let ctx = AstCtx {
-            file: &file,
-            root: &root,
-            line_index: &line_index,
-            test_only_file: false,
-        };
+        let ctx = AstCtx::new(&file, &root, &line_index, false);
 
         verify_true!(check_padding(&ctx).is_empty())
     }

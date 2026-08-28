@@ -129,7 +129,10 @@ fn check_ffi_thin_glue(ctx: &AstCtx<'_>) -> Vec<Violation> {
         return Vec::new();
     }
 
-    let threshold = ctx.file.config.get_usize("rust_ffi_thin_glue", &PARAMS[0]);
+    let threshold = ctx
+        .file
+        .config
+        .get_usize("rust_ffi_thin_glue", &FFI_THIN_GLUE_PARAMS[0]);
 
     ctx.nodes::<ast::Fn>()
         .filter(|function| {

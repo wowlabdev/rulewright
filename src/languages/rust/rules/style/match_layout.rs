@@ -1,347 +1,255 @@
 #[cfg(test)]
 use googletest::prelude::*;
-use ra_ap_syntax::{AstNode, Edition, SourceFile, ast, ast::HasArgList};
+use ra_ap_syntax::{AstNode, ast};
 
 use crate::{AstCtx, Example, Violation};
 
-use super::super::support::binary_macro_argument_candidates;
-
-const COMPLEX_MATCHES: &str = "complex-matches";
-const MULTILINE_ARM_SPACING: &str = "multiline-arm-spacing";
-const MIN_COMPLEX_ALTERNATIVES: usize = 3;
+use super::support::{gap_before_attached_comment, has_blank_line};
 
 #[rustfmt::skip]
 const EXAMPLES: &[Example] = &[
     Example {
-        label: "simple matches macro",
-        code: "fn valid(value: Value) -> bool { matches!(value, Value::One | Value::Two) }",
-        pass: true,
-    },
-    Example {
-        label: "complex multiline matches macro",
-        code: "fn valid(pair: (Check, Fix)) -> bool {\n    matches!(\n        pair,\n        (\n            Check::Line,\n            None | Some(Fix::Line),\n        )\n            | (Check::Ast, Some(Fix::Ast))\n            | (Check::Toml, Some(Fix::Toml))\n    )\n}",
-        pass: false,
-    },
-    Example {
-        label: "separated multiline match arms",
-        code: "fn run(value: Value) {\n    match value {\n        Value::One => {\n            prepare_one();\n            one();\n            finish_one();\n        }\n\n        Value::Two => {\n            prepare_two();\n            two();\n            finish_two();\n        }\n    }\n}",
-        pass: true,
-    },
-    Example {
-        label: "adjacent multiline match arms",
-        code: "fn run(value: Value) {\n    match value {\n        Value::One => {\n            prepare_one();\n            one();\n            finish_one();\n        }\n        Value::Two => {\n            prepare_two();\n            two();\n            finish_two();\n        }\n    }\n}",
-        pass: false,
-    },
-    Example {
-        label: "compact arms",
+        label: "small compact match",
         code: "fn value(input: bool) -> usize { match input { true => 1, false => 0 } }",
         pass: true,
     },
+    Example {
+        label: "large match with compact one-line arms",
+        code: "fn value(input: Input) -> usize {\n    match input {\n        Input::One => 1,\n        Input::Two => 2,\n        Input::Three => 3,\n        Input::Four => 4,\n        Input::Five => 5,\n        Input::Six => 6,\n        Input::Seven => 7,\n        Input::Eight => 8,\n        Input::Nine => 9,\n        Input::Ten => 10,\n    }\n}",
+        pass: true,
+    },
+    Example {
+        label: "one-line arms with unnecessary gaps",
+        code: "fn value(input: Input) -> usize {\n    match input {\n        Input::One => 1,\n\n        Input::Two => 2,\n\n        Input::Three => 3,\n    }\n}",
+        pass: false,
+    },
+    Example {
+        label: "one multiline body makes the whole match spacious",
+        code: "fn run(input: Input) {\n    match input {\n        Input::One => {\n            prepare_one();\n            finish_one();\n        }\n        Input::Two => finish(),\n        Input::Three => finish_three(),\n    }\n}",
+        pass: false,
+    },
+    Example {
+        label: "multiline match with inconsistent separation",
+        code: "fn run(input: Input) {\n    match input {\n        Input::One => {\n            one();\n        }\n\n        Input::Two => two(),\n        Input::Three => three(),\n    }\n}",
+        pass: false,
+    },
 ];
 
-crate::ast_rule!(
+crate::ast_tree_rule!(
     match_layout,
-    "Keep match arms and `matches!` patterns visually structured.",
-    "Complex pattern alternatives and dense multiline arms hide control flow; explicit match arms and whitespace make cases scannable.",
+    "Keep one-line match arms compact, collapse empty arm blocks, and separate every arm when any body is multiline.",
+    "Uniform one-line arms are easiest to scan as a compact list, empty bodies should be `{}`, and a multiline body needs one blank line between every arm so the cases remain visually distinct.",
     Low,
-    params {
-        checks: [String] = [
-            "complex-matches",
-            "multiline-arm-spacing",
-        ] in [
-            COMPLEX_MATCHES,
-            MULTILINE_ARM_SPACING,
-        ],
-    },
+    fix_match_layout,
 );
 
 fn check_match_layout(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let checks = ctx
-        .file
-        .config
-        .get_str_array("rust_match_layout", &PARAMS[0]);
-    let mut violations = Vec::new();
+    ctx.nodes::<ast::MatchExpr>()
+        .filter_map(|expression| {
+            let arm_count = expression.match_arm_list()?.arms().count();
+            let fixes = gap_fixes(&expression);
+            let expanded_empty = expression
+                .match_arm_list()
+                .is_some_and(|list| list.arms().any(|arm| expanded_empty_block(&arm).is_some()));
 
-    if enabled(&checks, COMPLEX_MATCHES) {
-        violations.extend(complex_matches_violations(ctx));
-    }
+            (expanded_empty || !fixes.is_empty()).then(|| {
+                let spacious = is_spacious(&expression);
+                let problem = if expanded_empty {
+                    "contains an empty arm body that should be written as `{}`; shorten the pattern or import its type if rustfmt expands it"
+                } else if spacious {
+                    "needs a blank line between every arm"
+                } else {
+                    "contains only one-line arms and should not have blank lines between them"
+                };
 
-    for expression in ctx.nodes::<ast::MatchExpr>() {
-        let Some(arms) = expression.match_arm_list() else {
-            continue;
-        };
-        let arms: Vec<ast::MatchArm> = arms.arms().collect();
-
-        if enabled(&checks, MULTILINE_ARM_SPACING) {
-            violations.extend(multiline_spacing_violations(ctx, &arms));
-        }
-    }
-
-    violations
-}
-
-fn enabled(checks: &[String], check: &str) -> bool {
-    checks.iter().any(|configured| configured == check)
-}
-
-fn complex_matches_violations(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    ctx.nodes::<ast::MacroCall>()
-        .filter(is_matches_macro)
-        .filter_map(|call| {
-            let pattern = matches_pattern(&call)?;
-
-            complex_pattern(&pattern).then(|| {
                 ctx.violation(
-                    &call,
-                    "multiline `matches!` has complex alternatives — use a `match` expression with one readable case per arm",
+                    &expression,
+                    format!("match with {arm_count} arms {problem}"),
                 )
             })
         })
         .collect()
 }
 
-fn is_matches_macro(call: &ast::MacroCall) -> bool {
-    call.path().is_some_and(|path| {
-        matches!(
-            path.syntax()
-                .text()
-                .to_string()
-                .replace(char::is_whitespace, "")
-                .as_str(),
-            "matches" | "std::matches" | "core::matches"
-        )
-    })
+#[derive(Clone, Copy)]
+enum GapFix {
+    Add,
+    Remove,
 }
 
-fn matches_pattern(call: &ast::MacroCall) -> Option<String> {
-    binary_macro_argument_candidates(call)?
-        .into_iter()
-        .find_map(|(expression, mut pattern)| {
-            pattern.truncate(pattern.trim_end().len());
+fn gap_fixes(expression: &ast::MatchExpr) -> Vec<(ast::MatchArm, GapFix)> {
+    let Some(list) = expression.match_arm_list() else {
+        return Vec::new();
+    };
+    let arms: Vec<ast::MatchArm> = list.arms().collect();
+    let spacious = arms.iter().any(is_multiline);
 
-            if pattern.ends_with(',') {
-                pattern.pop();
+    arms.into_iter()
+        .skip(1)
+        .filter_map(|arm| {
+            let has_gap =
+                gap_before_attached_comment(arm.syntax()).is_some_and(|gap| has_blank_line(&gap));
+
+            match (spacious, has_gap) {
+                (true, false) => Some((arm, GapFix::Add)),
+                (false, true) => Some((arm, GapFix::Remove)),
+                _ => None,
             }
-
-            (parse_expression(&expression).is_some() && parse_pattern(&pattern).is_some())
-                .then_some(pattern)
-        })
-}
-
-fn parse_expression(source: &str) -> Option<ast::Expr> {
-    let wrapper = format!("fn __rulewright_match_layout() {{ let _ = {source}; }}");
-    let parse = SourceFile::parse(&wrapper, Edition::Edition2024);
-
-    if !parse.errors().is_empty() {
-        return None;
-    }
-
-    parse
-        .tree()
-        .syntax()
-        .descendants()
-        .find_map(ast::LetStmt::cast)?
-        .initializer()
-}
-
-fn complex_pattern(source: &str) -> bool {
-    if !source.contains('\n') {
-        return false;
-    }
-
-    let Some(ast::Pat::OrPat(pattern)) = parse_pattern(source) else {
-        return false;
-    };
-
-    let alternatives: Vec<ast::Pat> = pattern.pats().collect();
-
-    alternatives.len() >= MIN_COMPLEX_ALTERNATIVES
-        && alternatives.iter().any(|alternative| {
-            matches!(alternative, ast::Pat::TuplePat(_))
-                && alternative.syntax().text().contains_char('\n')
-        })
-}
-
-fn parse_pattern(source: &str) -> Option<ast::Pat> {
-    let wrapper =
-        format!("fn __rulewright_match_layout(value: ()) {{ match value {{ {source} => () }} }}");
-    let parse = SourceFile::parse(&wrapper, Edition::Edition2024);
-
-    if !parse.errors().is_empty() {
-        return None;
-    }
-
-    parse
-        .tree()
-        .syntax()
-        .descendants()
-        .find_map(ast::MatchArm::cast)?
-        .pat()
-}
-
-fn multiline_spacing_violations(ctx: &AstCtx<'_>, arms: &[ast::MatchArm]) -> Vec<Violation> {
-    arms.windows(2)
-        .filter_map(|pair| {
-            let [previous, current] = pair else {
-                return None;
-            };
-            let multiline = is_substantial_arm(previous) && is_substantial_arm(current);
-
-            (multiline && !has_blank_line_between(ctx, previous, current)).then(|| {
-                ctx.violation(
-                    current,
-                    "blank line required between adjacent match arms with substantial multiline bodies",
-                )
-            })
         })
         .collect()
 }
 
-fn is_substantial_arm(arm: &ast::MatchArm) -> bool {
-    let Some(expression) = arm.expr() else {
-        return false;
-    };
-
-    if !expression.syntax().text().contains_char('\n') {
+fn is_multiline(arm: &ast::MatchArm) -> bool {
+    if expanded_empty_block(arm).is_some() {
         return false;
     }
 
-    match expression {
-        ast::Expr::BlockExpr(block) => block
-            .stmt_list()
-            .is_some_and(|statements| statements.statements().count() >= MIN_COMPLEX_ALTERNATIVES),
-        ast::Expr::MethodCallExpr(expression) => {
-            expression
-                .syntax()
-                .descendants()
-                .filter_map(ast::MethodCallExpr::cast)
-                .count()
-                >= MIN_COMPLEX_ALTERNATIVES
-        }
-        ast::Expr::CallExpr(expression) => expression
-            .arg_list()
-            .is_some_and(|arguments| arguments.args().count() >= MIN_COMPLEX_ALTERNATIVES),
-
-        ast::Expr::RecordExpr(expression) => expression
-            .record_expr_field_list()
-            .is_some_and(|fields| fields.fields().count() >= MIN_COMPLEX_ALTERNATIVES),
-
-        ast::Expr::ClosureExpr(expression) => expression
-            .body()
-            .is_some_and(|body| matches!(body, ast::Expr::BlockExpr(_))),
-        _ => false,
-    }
+    arm.expr()
+        .is_some_and(|expression| expression.syntax().text().to_string().contains('\n'))
 }
 
-fn has_blank_line_between(
-    ctx: &AstCtx<'_>,
-    previous: &ast::MatchArm,
-    current: &ast::MatchArm,
-) -> bool {
-    let start: usize = previous.syntax().text_range().end().into();
-    let end: usize = current.syntax().text_range().start().into();
-    let Some(gap) = ctx.file.contents.get(start..end) else {
-        return false;
+fn expanded_empty_block(arm: &ast::MatchArm) -> Option<ast::BlockExpr> {
+    let ast::Expr::BlockExpr(block) = arm.expr()? else {
+        return None;
     };
+    let text = block.syntax().text().to_string();
+    let inner = text.strip_prefix('{')?.strip_suffix('}')?;
 
-    gap.contains("\n\n") || gap.contains("\r\n\r\n")
+    (inner.trim().is_empty() && inner.contains('\n')).then_some(block)
+}
+
+fn is_spacious(expression: &ast::MatchExpr) -> bool {
+    expression
+        .match_arm_list()
+        .is_some_and(|list| list.arms().any(|arm| is_multiline(&arm)))
+}
+
+fn fix_match_layout(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
+
+    for expression in ctx
+        .root
+        .syntax()
+        .descendants()
+        .filter_map(ast::MatchExpr::cast)
+    {
+        if let Some(list) = expression.match_arm_list() {
+            for block in list.arms().filter_map(|arm| expanded_empty_block(&arm)) {
+                let range = block.syntax().text_range();
+
+                edits.push((range.start().into(), range.end().into(), "{}".to_owned()));
+            }
+        }
+
+        for (arm, fix) in gap_fixes(&expression) {
+            let Some(gap) = gap_before_attached_comment(arm.syntax()) else {
+                continue;
+            };
+            let replacement = match fix {
+                GapFix::Add => format!("\n{}", gap.text()),
+
+                GapFix::Remove => {
+                    let indentation = gap.text().rsplit_once('\n').map_or("", |(_, tail)| tail);
+
+                    format!("\n{indentation}")
+                }
+            };
+            let range = gap.text_range();
+
+            edits.push((range.start().into(), range.end().into(), replacement));
+        }
+    }
+
+    if edits.is_empty() {
+        return None;
+    }
+
+    edits.sort_unstable_by_key(|edit| std::cmp::Reverse(edit.0));
+
+    let mut fixed = ctx.file.contents.to_owned();
+
+    for (start, end, replacement) in edits {
+        fixed.replace_range(start..end, &replacement);
+    }
+
+    Some(fixed)
 }
 
 crate::rulewright_ast_test!(check_match_layout, {
     crate::example_tests!(EXAMPLES, check_match_layout);
+    crate::fix_tests!(EXAMPLES, ast_tree, check_match_layout, fix_match_layout);
 
     #[gtest]
-    fn two_multiline_matches_alternatives_remain_readable() -> Result<()> {
-        let source = "fn valid(value: Value) -> bool {\n    matches!(\n        value,\n        Value::One\n            | Value::Two\n    )\n}";
+    fn each_affected_match_reports_once() -> Result<()> {
+        verify_eq!(run(EXAMPLES[2].code).len(), 1)?;
 
-        verify_true!(run(source).is_empty())
+        verify_eq!(run(EXAMPLES[3].code).len(), 1)?;
+
+        verify_eq!(run(EXAMPLES[4].code).len(), 1)
     }
 
     #[gtest]
-    fn nested_pipes_do_not_count_as_top_level_alternatives() -> Result<()> {
-        let source = "fn valid(value: Option<Value>) -> bool {\n    matches!(\n        value,\n        Some(Value::One | Value::Two | Value::Three)\n    )\n}";
+    fn fix_keeps_comments_and_attributes_with_the_following_arm() -> Result<()> {
+        let source = "fn run(input: Input) {\n    match input {\n        Input::One => {\n            prepare();\n            finish();\n        }\n        // The fallback must remain documented.\n        #[cfg(unix)]\n        Input::Two => {\n            prepare_fallback();\n            finish();\n        }\n    }\n}";
+        let expected = "fn run(input: Input) {\n    match input {\n        Input::One => {\n            prepare();\n            finish();\n        }\n\n        // The fallback must remain documented.\n        #[cfg(unix)]\n        Input::Two => {\n            prepare_fallback();\n            finish();\n        }\n    }\n}";
 
-        verify_true!(run(source).is_empty())
+        verify_eq!(
+            crate::apply_ast_tree_fix(source, check_match_layout, fix_match_layout),
+            expected
+        )
     }
 
     #[gtest]
-    fn tuple_alternatives_remain_readable_when_each_stays_on_one_line() -> Result<()> {
-        let source = "fn valid(pair: (Check, Fix)) -> bool {\n    matches!(\n        pair,\n        (Check::Line, Fix::Line)\n            | (Check::Ast, Fix::Ast)\n            | (Check::Toml, Fix::Toml)\n    )\n}";
-
-        verify_true!(run(source).is_empty())
-    }
-
-    #[gtest]
-    fn standard_qualified_matches_macros_are_checked() -> Result<()> {
-        for macro_path in ["matches", "std::matches", "core::matches"] {
-            let source = format!(
-                "fn valid(pair: (Check, Fix)) -> bool {{\n    {macro_path}!(\n        pair,\n        (\n            Check::Line,\n            Fix::Line,\n        )\n            | (Check::Ast, Fix::Ast)\n            | (Check::Toml, Fix::Toml)\n    )\n}}"
-            );
-
-            verify_eq!(run(&source).len(), 1)?;
-        }
-
-        Ok(())
-    }
-
-    #[gtest]
-    fn trailing_pattern_commas_are_checked_for_every_standard_macro_path() -> Result<()> {
-        for macro_path in ["matches", "std::matches", "core::matches"] {
-            let source = format!(
-                "fn valid(pair: (Check, Fix)) -> bool {{\n    {macro_path}!(\n        pair,\n        (\n            Check::Line,\n            Fix::Line,\n        )\n            | (Check::Ast, Fix::Ast)\n            | (Check::Toml, Fix::Toml),\n    )\n}}"
-            );
-
-            verify_eq!(run(&source).len(), 1)?;
-        }
-
-        Ok(())
-    }
-
-    #[gtest]
-    fn generic_commas_do_not_hide_the_pattern_argument() -> Result<()> {
-        let source = "fn valid() -> bool {\n    matches!(\n        build::<Alpha, Beta>(),\n        (\n            Value::One,\n            Value::Two,\n        )\n            | (Value::Three, Value::Four)\n            | (Value::Five, Value::Six)\n    )\n}";
+    fn guards_and_nested_matches_are_formatted_independently() -> Result<()> {
+        let source = "fn value(input: Input, nested: Nested) -> usize {\n    match input {\n        Input::One if ready() => match nested {\n            Nested::One => 1,\n            Nested::Two => 2,\n        },\n        Input::Two => match nested {\n            Nested::One => 3,\n            Nested::Two => 4,\n        },\n    }\n}";
 
         verify_eq!(run(source).len(), 1)
     }
 
     #[gtest]
-    fn const_generics_and_pattern_guards_keep_the_correct_split() -> Result<()> {
-        let source = "fn valid() -> bool {\n    matches!(\n        build::<{ 1 }, { 2 }>(),\n        (\n            Value::One,\n            Value::Two,\n        )\n            | (Value::Three, Value::Four)\n            | (Value::Five, Value::Six) if enabled()\n    )\n}";
+    fn compact_matches_stay_compact_regardless_of_arm_count() -> Result<()> {
+        let source = EXAMPLES[1].code;
+
+        verify_true!(run(source).is_empty())
+    }
+
+    #[gtest]
+    fn fix_removes_gaps_from_one_line_arms() -> Result<()> {
+        let source = EXAMPLES[2].code;
+        let expected = "fn value(input: Input) -> usize {\n    match input {\n        Input::One => 1,\n        Input::Two => 2,\n        Input::Three => 3,\n    }\n}";
+
+        verify_eq!(
+            crate::apply_ast_tree_fix(source, check_match_layout, fix_match_layout),
+            expected
+        )
+    }
+
+    #[gtest]
+    fn cfg_attribute_does_not_make_compact_arms_spacious() -> Result<()> {
+        let source = "fn label(value: Action) -> &'static str {\n    match value {\n        Action::Create => \"create\",\n\n        #[cfg(test)]\n        Action::Inspect => \"inspect\",\n\n        Action::Write => \"write\",\n    }\n}";
+        let expected = "fn label(value: Action) -> &'static str {\n    match value {\n        Action::Create => \"create\",\n        #[cfg(test)]\n        Action::Inspect => \"inspect\",\n        Action::Write => \"write\",\n    }\n}";
+
+        verify_eq!(
+            crate::apply_ast_tree_fix(source, check_match_layout, fix_match_layout),
+            expected
+        )
+    }
+
+    #[gtest]
+    fn empty_arm_diagnostic_does_not_consume_documentation() -> Result<()> {
+        let source = "fn visit(value: Value) {\n    match value {\n        Value::Empty => {\n        },\n        Value::Documented => {\n            // Deliberately ignored.\n        },\n    }\n}";
 
         verify_eq!(run(source).len(), 1)
     }
 
     #[gtest]
-    fn adjacent_substantial_expression_arms_require_spacing() -> Result<()> {
-        let source = "fn value(input: Input) -> usize {\n    match input {\n        Input::One(value) => value\n            .normalize()\n            .as_slice()\n            .len(),\n        Input::Two(value) => value\n            .normalize()\n            .as_slice()\n            .len(),\n    }\n}";
+    fn fix_collapses_only_truly_empty_arm_blocks() -> Result<()> {
+        let source = "fn visit(value: Value) {\n    match value {\n        Value::Empty => {\n        },\n        Value::Documented => {\n            // Deliberately ignored.\n        },\n    }\n}";
+        let expected = "fn visit(value: Value) {\n    match value {\n        Value::Empty => {},\n\n        Value::Documented => {\n            // Deliberately ignored.\n        },\n    }\n}";
+        let fixed = crate::apply_ast_tree_fix(source, check_match_layout, fix_match_layout);
 
-        verify_eq!(run(source).len(), 1)
-    }
+        verify_eq!(fixed, expected)?;
 
-    #[gtest]
-    fn checks_can_be_enabled_independently() -> Result<()> {
-        let source = "fn valid(pair: (Check, Fix), value: Value) -> bool {\n    let compatible = matches!(\n        pair,\n        (\n            Check::Line,\n            Fix::Line,\n        )\n            | (Check::Ast, Fix::Ast)\n            | (Check::Toml, Fix::Toml)\n    );\n    match value {\n        Value::One => {\n            prepare_one();\n            run_one();\n            finish_one();\n        }\n        Value::Two => {\n            prepare_two();\n            run_two();\n            finish_two();\n        }\n    }\n    compatible\n}";
-        let complex = crate::test_support::check_source_ast_params(
-            source,
-            "rust_match_layout",
-            &[("checks", &[COMPLEX_MATCHES])],
-            check_match_layout,
-        );
-        let spacing = crate::test_support::check_source_ast_params(
-            source,
-            "rust_match_layout",
-            &[("checks", &[MULTILINE_ARM_SPACING])],
-            check_match_layout,
-        );
-        let disabled = crate::test_support::check_source_ast_params(
-            source,
-            "rust_match_layout",
-            &[("checks", &[])],
-            check_match_layout,
-        );
-
-        verify_eq!(complex.len(), 1)?;
-        verify_eq!(spacing.len(), 1)?;
-        verify_true!(disabled.is_empty())
+        verify_true!(run(&fixed).is_empty())
     }
 });

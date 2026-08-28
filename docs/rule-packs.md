@@ -56,6 +56,17 @@ fn main() -> std::process::ExitCode {
 
 Constructors are also available for Rust AST rules, coordinated AST-tree fixes, Rust workspace rules, language-neutral workspace rules, and TOML rules. Context helpers provide source locations and typed configuration; workspace record types are publicly readable.
 
+For larger packs, `pack_line_rule!`, `pack_ast_rule!`, and `pack_toml_rule!` declare the rule metadata and emit a `<RULE_NAME>_RULE` constant for the pack registry. Each macro expects an `EXAMPLES: &[rulewright::Example]` constant in the same module and accepts `default = false` plus typed `params { ... }` declarations. The direct `Rule` constructors remain useful when generated code or unusual registration logic is clearer than a declaration macro.
+
+Enable Rulewright's `rule-pack-testing` feature in the pack's development dependency to use the exported `rulewright_test!`, `rulewright_ast_test!`, `rulewright_toml_test!`, `example_tests!`, and `fix_tests!` harnesses:
+
+```toml
+[dev-dependencies]
+rulewright = { version = "0.1", features = ["rule-pack-testing"] }
+```
+
+The testing feature is not needed by the wrapper binary in normal builds.
+
 `RuleInfo::new` enables a rule in generated configurations. Chain `.disabled_by_default()` for framework-specific or unusually opinionated pack rules that should be opt-in.
 
 ## Identity and cache safety

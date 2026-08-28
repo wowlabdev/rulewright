@@ -13,11 +13,13 @@ const SIXTEEN_BYTES: u64 = 16;
 pub(super) fn estimate_fields_size(fields: Option<ast::FieldList>) -> Option<u64> {
     match fields {
         None => Some(0),
+
         Some(ast::FieldList::RecordFieldList(fields)) => {
             fields.fields().try_fold(0u64, |total, field| {
                 Some(total.saturating_add(estimate_type_size(&field.ty()?)?))
             })
         }
+
         Some(ast::FieldList::TupleFieldList(fields)) => {
             fields.fields().try_fold(0u64, |total, field| {
                 Some(total.saturating_add(estimate_type_size(&field.ty()?)?))

@@ -69,7 +69,6 @@ fn check_native_escape_hatches(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .collect()
 }
 
-// #rw(fn: rust_alloc_in_loop) method names are retained as owned cross-impl lookup keys
 fn collect_methods(ctx: &AstCtx<'_>) -> HashMap<String, Vec<(String, bool)>> {
     let mut methods: HashMap<String, Vec<(String, bool)>> = HashMap::default();
 
@@ -92,6 +91,7 @@ fn collect_methods(ctx: &AstCtx<'_>) -> HashMap<String, Vec<(String, bool)>> {
                     function.name()?.text().to_string(),
                     function.unsafe_token().is_some(),
                 )),
+
                 _ => None,
             }));
     }

@@ -178,7 +178,7 @@ fn directive_block_scope() -> Result<()> {
 // #rw(fn: rust_duplicate_strings) This linter scenario intentionally repeats source fixtures used to verify independent paths.
 fn directive_fn_scope() -> Result<()> {
     // #rw(rust_duplicate_strings) This linter fixture intentionally repeats source text across independent rule-harness scenarios.
-    let d = directive("// #rw(fn: rust_alloc_in_loop) error reporting function").or_fail()?;
+    let d = directive("// #rw(fn: rust_panic) error reporting function").or_fail()?;
     let DirectiveResult::Valid(d) = d else {
         panic!("expected valid")
     };
@@ -190,12 +190,12 @@ fn directive_fn_scope() -> Result<()> {
 
 #[gtest]
 fn directive_multi_rule() -> Result<()> {
-    let d = directive("// #rw(rust_alloc_in_loop, rust_clone_in_loop) error path").or_fail()?;
+    let d = directive("// #rw(rust_panic, rust_dbg) error path").or_fail()?;
     let DirectiveResult::Valid(d) = d else {
         panic!("expected valid")
     };
 
-    verify_eq!(d.rules, vec!["rust_alloc_in_loop", "rust_clone_in_loop"])?;
+    verify_eq!(d.rules, vec!["rust_panic", "rust_dbg"])?;
 
     Ok(())
 }
@@ -284,36 +284,6 @@ fn rewrite_directive_rules_preserves_scope_reason_and_indentation() -> Result<()
         rewritten.as_deref(),
         Some("    // #rw(block: rust_dbg) exact reason")
     )?;
-
-    Ok(())
-}
-
-#[gtest]
-fn find_url_https() -> Result<()> {
-    // #rw(rust_hardcoded_url) test data
-    verify_eq!(find_url("visit https://example.com"), Some(6))?;
-
-    Ok(())
-}
-
-#[gtest]
-fn find_url_http() -> Result<()> {
-    // #rw(rust_hardcoded_url) test data
-    verify_eq!(find_url("visit http://example.com"), Some(6))?;
-
-    Ok(())
-}
-
-#[gtest]
-fn find_url_none() -> Result<()> {
-    verify_eq!(find_url("no urls here"), None)?;
-
-    Ok(())
-}
-
-#[gtest]
-fn find_url_partial() -> Result<()> {
-    verify_eq!(find_url("httpfoo bar"), None)?;
 
     Ok(())
 }

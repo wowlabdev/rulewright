@@ -69,7 +69,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     deeply_nested_types,
     "Flag type annotations with > 3 levels of generic nesting.",
-    "Types like HashMap<String, Vec<Option<Arc<T>>>> are unreadable. Use type aliases to name intermediate types.",
+    "Types like HashMap<String, Vec<Option<Arc<T>>>> hide the domain structure. Introduce an alias or value type only where it gives the nested concept a meaningful name, not merely to move the same punctuation elsewhere.",
 );
 
 const MAX_DEPTH: usize = 3;
@@ -148,13 +148,19 @@ fn type_depth(ty: &ast::Type) -> usize {
                     current = path.qualifier();
                 }
             }
+
             ast::Type::RefType(reference) => pending.extend(reference.ty().map(|ty| (ty, depth))),
+
             ast::Type::SliceType(slice) => pending.extend(slice.ty().map(|ty| (ty, depth))),
+
             ast::Type::ArrayType(array) => pending.extend(array.ty().map(|ty| (ty, depth))),
+
             ast::Type::TupleType(tuple) => {
                 pending.extend(tuple.fields().map(|ty| (ty, depth)));
             }
+
             ast::Type::ParenType(paren) => pending.extend(paren.ty().map(|ty| (ty, depth))),
+
             _ => {}
         }
     }

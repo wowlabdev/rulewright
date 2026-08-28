@@ -50,7 +50,7 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     long_compound_name,
     "Flag type definitions whose CamelCase name compounds more than threshold words.",
-    "Rust item names are short: `AppConfig` over `GlobalApplicationConfig`; long compounds hide the item's essence.",
+    "Long compound names can bury the item's essential role. Remove words already supplied by the module or type context, but keep enough domain meaning to avoid vague names and collisions; suppress a deliberately disambiguated public name rather than weakening the API.",
     Low,
     params { threshold: i64 = 4 },
 );
@@ -59,7 +59,7 @@ fn check_long_compound_name(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let threshold = ctx
         .file
         .config
-        .get_usize("rust_long_compound_name", &PARAMS[0]);
+        .get_usize("rust_long_compound_name", &LONG_COMPOUND_NAME_PARAMS[0]);
 
     ctx.nodes::<ast::Item>()
         .filter(|item| !ctx.is_in_test(item))

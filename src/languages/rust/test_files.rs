@@ -14,7 +14,11 @@ struct ModuleEdge {
     requires_test: bool,
 }
 
-pub(crate) fn discover(paths: &[PathBuf], root: &Path) -> HashSet<String> {
+pub(crate) fn discover(
+    paths: &[PathBuf],
+    root: &Path,
+    test_roots: &HashSet<String>,
+) -> HashSet<String> {
     let known: HashSet<String> = paths
         .iter()
         .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
@@ -42,7 +46,11 @@ pub(crate) fn discover(paths: &[PathBuf], root: &Path) -> HashSet<String> {
         collect_include_edges(path, &source, root, &parsed.tree(), &known, &mut edges);
     }
 
-    let mut test_files = HashSet::new();
+    let mut test_files = test_roots
+        .iter()
+        .filter(|path| known.contains(*path))
+        .cloned()
+        .collect::<HashSet<_>>();
 
     loop {
         let before = test_files.len();
@@ -141,13 +149,15 @@ fn collect_include_edges(
 }
 
 fn module_candidates(path: &Path, module: &ast::Module) -> Vec<PathBuf> {
+    if let Some(configured) = path_attribute(module) {
+        return path_attribute_directory(path, module)
+            .map(|directory| vec![directory.join(configured)])
+            .unwrap_or_default();
+    }
+
     let Some(module_dir) = module_directory(path, module) else {
         return Vec::new();
     };
-
-    if let Some(configured) = path_attribute(module) {
-        return vec![module_dir.join(configured)];
-    }
 
     let Some(name) = module.name().map(|name| name.text().to_string()) else {
         return Vec::new();
@@ -169,7 +179,25 @@ fn module_directory(path: &Path, module: &ast::Module) -> Option<PathBuf> {
         module_dir.push(stem);
     }
 
-    let mut inline_ancestors: Vec<String> = module
+    for ancestor in inline_ancestors(module) {
+        module_dir.push(ancestor);
+    }
+
+    Some(module_dir)
+}
+
+fn path_attribute_directory(path: &Path, module: &ast::Module) -> Option<PathBuf> {
+    let mut directory = path.parent()?.to_path_buf();
+
+    for ancestor in inline_ancestors(module) {
+        directory.push(ancestor);
+    }
+
+    Some(directory)
+}
+
+fn inline_ancestors(module: &ast::Module) -> Vec<String> {
+    let mut ancestors: Vec<String> = module
         .syntax()
         .ancestors()
         .skip(1)
@@ -178,13 +206,9 @@ fn module_directory(path: &Path, module: &ast::Module) -> Option<PathBuf> {
         .filter_map(|ancestor| ancestor.name().map(|name| name.text().to_string()))
         .collect();
 
-    inline_ancestors.reverse();
+    ancestors.reverse();
 
-    for ancestor in inline_ancestors {
-        module_dir.push(ancestor);
-    }
-
-    Some(module_dir)
+    ancestors
 }
 
 fn path_attribute(module: &ast::Module) -> Option<String> {
@@ -215,9 +239,11 @@ fn candidate_relative(path: &Path, root: &Path) -> Option<String> {
     for component in native.components() {
         match component {
             std::path::Component::CurDir => {}
+
             std::path::Component::ParentDir => {
                 normalized.pop();
             }
+
             other => normalized.push(other.as_os_str()),
         }
     }
@@ -247,7 +273,7 @@ mod tests {
         .or_fail()?;
         crate::file::write_text(&split, "fn test_only() {}\n").or_fail()?;
 
-        let discovered = discover(&[source, split], directory.path());
+        let discovered = discover(&[source, split], directory.path(), &HashSet::new());
 
         verify_eq!(discovered, HashSet::from(["src/checks.rs".to_owned()]))
     }
@@ -270,7 +296,7 @@ mod tests {
         crate::file::write_text(&child, "fn child_test() {}\n").or_fail()?;
         crate::file::write_text(&included, "fn included_test() {}\n").or_fail()?;
         let paths = [lib, split, child, included];
-        let discovered = discover(&paths, directory.path());
+        let discovered = discover(&paths, directory.path(), &HashSet::new());
 
         verify_eq!(
             discovered,
@@ -297,7 +323,7 @@ mod tests {
         .or_fail()?;
         crate::file::write_text(&nested, "fn nested_test() {}\n").or_fail()?;
         crate::file::write_text(&shared, "fn shared_test() {}\n").or_fail()?;
-        let discovered = discover(&[lib, nested, shared], directory.path());
+        let discovered = discover(&[lib, nested, shared], directory.path(), &HashSet::new());
 
         verify_eq!(
             discovered,
@@ -305,6 +331,29 @@ mod tests {
                 "src/fixtures/checks.rs".to_owned(),
                 "src/shared.rs".to_owned(),
             ])
+        )
+    }
+
+    #[gtest]
+    fn path_attribute_in_external_module_is_relative_to_its_source_directory() -> Result<()> {
+        let directory = crate::temporary::Directory::new().or_fail()?;
+        let lib = directory.path().join("src/lib.rs");
+        let module = directory.path().join("src/navigation.rs");
+        let split = directory.path().join("src/navigation_tests.rs");
+
+        crate::directory::ensure(lib.parent().or_fail()?).or_fail()?;
+        crate::file::write_text(&lib, "mod navigation;\n").or_fail()?;
+        crate::file::write_text(
+            &module,
+            "#[cfg(test)]\n#[path = \"navigation_tests.rs\"]\nmod tests;\n",
+        )
+        .or_fail()?;
+        crate::file::write_text(&split, "fn split_test() {}\n").or_fail()?;
+        let discovered = discover(&[lib, module, split], directory.path(), &HashSet::new());
+
+        verify_eq!(
+            discovered,
+            HashSet::from(["src/navigation_tests.rs".to_owned()])
         )
     }
 
@@ -323,8 +372,27 @@ mod tests {
         .or_fail()?;
         crate::file::write_text(&test_only, "fn test_only() {}\n").or_fail()?;
         crate::file::write_text(&mixed, "fn mixed() {}\n").or_fail()?;
-        let discovered = discover(&[lib, test_only, mixed], directory.path());
+        let discovered = discover(&[lib, test_only, mixed], directory.path(), &HashSet::new());
 
         verify_eq!(discovered, HashSet::from(["src/test_only.rs".to_owned()]))
+    }
+
+    #[gtest]
+    fn cargo_test_roots_propagate_to_child_modules() -> Result<()> {
+        let directory = crate::temporary::Directory::new().or_fail()?;
+        let integration = directory.path().join("tests/api.rs");
+        let support = directory.path().join("tests/api/support.rs");
+
+        crate::directory::ensure(support.parent().or_fail()?).or_fail()?;
+        crate::file::write_text(&integration, "mod support;\n").or_fail()?;
+        crate::file::write_text(&support, "fn fixture() {}\n").or_fail()?;
+        let paths = [integration, support];
+        let roots = HashSet::from(["tests/api.rs".to_owned()]);
+        let discovered = discover(&paths, directory.path(), &roots);
+
+        verify_eq!(
+            discovered,
+            HashSet::from(["tests/api.rs".to_owned(), "tests/api/support.rs".to_owned(),])
+        )
     }
 }

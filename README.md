@@ -49,7 +49,7 @@ rulewright --llm > rulewright-report.md
 rulewright --ci --strict
 ```
 
-`--dirty` limits source analysis to Git changes while retaining the workspace context needed by cross-file rules. `--format json` emits structured findings with stable IDs and source columns. `--fix --dry-run` previews the initial mechanical edits; later fixpoint passes can discover more. `--ci` runs Rulewright, rustfmt, and Clippy as one local gate. Run `rulewright --help` for the complete CLI.
+`--dirty` limits source analysis to Git changes while retaining the workspace context needed by cross-file rules. `--format json` emits self-contained findings with stable IDs, source columns, rule descriptions, and repair guidance. `--fix --dry-run` previews the initial mechanical edits; later fixpoint passes can discover more. `--ci` runs Rulewright, rustfmt, and Clippy as one local gate. Run `rulewright --help` for the complete CLI.
 
 For an established workspace, `--write-baseline` records the current debt without suppressing it in source. Future runs with `--baseline` allow that exact count and still fail on new findings or increases to an existing finding.
 

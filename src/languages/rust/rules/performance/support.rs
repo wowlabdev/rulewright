@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use ra_ap_syntax::{
-    AstNode, SyntaxNode,
-    ast::{self, HasArgList, HasGenericArgs, HasLoopBody, HasName, LiteralKind},
+    AstNode, SyntaxKind, SyntaxNode,
+    ast::{self, BinaryOp, HasArgList, HasGenericArgs, HasLoopBody, HasName, LiteralKind},
 };
 
 pub(super) use super::super::support::{estimate_type_size, parse_int_expr};
@@ -73,17 +75,99 @@ where
     })
 }
 
+pub(super) fn enclosing_loop_body<N>(node: &N) -> Option<ast::BlockExpr>
+where
+    N: AstNode,
+{
+    node.syntax()
+        .ancestors()
+        .filter_map(ast::BlockExpr::cast)
+        .find(|body| {
+            body.syntax().parent().is_some_and(|parent| {
+                ast::ForExpr::can_cast(parent.kind())
+                    || ast::WhileExpr::can_cast(parent.kind())
+                    || ast::LoopExpr::can_cast(parent.kind())
+            })
+        })
+}
+
+pub(super) fn loop_variant_bindings<N>(node: &N, body: &ast::BlockExpr) -> HashSet<String>
+where
+    N: AstNode,
+{
+    let mut bindings: HashSet<String> = body
+        .syntax()
+        .descendants()
+        .filter(|candidate| candidate.text_range().start() < node.syntax().text_range().start())
+        .filter_map(ast::IdentPat::cast)
+        .filter_map(|pattern| pattern.name().map(|name| name.text().to_string()))
+        .collect();
+    let Some(parent) = body.syntax().parent() else {
+        return bindings;
+    };
+
+    if let Some(for_loop) = ast::ForExpr::cast(parent.clone())
+        && let Some(pattern) = for_loop.pat()
+    {
+        bindings.extend(
+            pattern
+                .syntax()
+                .descendants()
+                .filter_map(ast::IdentPat::cast)
+                .filter_map(|pattern| pattern.name().map(|name| name.text().to_string())),
+        );
+    }
+
+    if let Some(while_loop) = ast::WhileExpr::cast(parent)
+        && let Some(ast::Expr::LetExpr(let_expression)) = while_loop.condition()
+        && let Some(pattern) = let_expression.pat()
+    {
+        bindings.extend(
+            pattern
+                .syntax()
+                .descendants()
+                .filter_map(ast::IdentPat::cast)
+                .filter_map(|pattern| pattern.name().map(|name| name.text().to_string())),
+        );
+    }
+
+    bindings.extend(
+        body.syntax()
+            .descendants()
+            .filter_map(ast::BinExpr::cast)
+            .filter(|expression| matches!(expression.op_kind(), Some(BinaryOp::Assignment { .. })))
+            .filter_map(|expression| expression.lhs())
+            .filter_map(|expression| path_expr_name(&expression)),
+    );
+
+    bindings
+}
+
+pub(super) fn syntax_references_binding(syntax: &SyntaxNode, bindings: &HashSet<String>) -> bool {
+    if syntax
+        .descendants_with_tokens()
+        .filter_map(ra_ap_syntax::NodeOrToken::into_token)
+        .any(|token| token.kind() == SyntaxKind::IDENT && bindings.contains(token.text()))
+    {
+        return true;
+    }
+
+    let text = syntax.text().to_string();
+
+    bindings.iter().any(|binding| {
+        text.contains(&format!("{{{binding}}}")) || text.contains(&format!("{{{binding}:"))
+    })
+}
+
 pub(super) fn is_in_async_context<N>(node: &N) -> bool
 where
     N: AstNode,
 {
     for ancestor in node.syntax().ancestors().skip(1) {
-        // #rw(rust_clone_in_loop) SyntaxNode clone is reference-counted and O(1)
         if let Some(closure) = ast::ClosureExpr::cast(ancestor.clone()) {
             return closure.async_token().is_some();
         }
 
-        // #rw(rust_clone_in_loop) SyntaxNode clone is reference-counted and O(1)
         if let Some(block) = ast::BlockExpr::cast(ancestor.clone()) {
             if block.async_token().is_some() {
                 return true;
@@ -145,21 +229,6 @@ pub(super) fn ident_pattern_name(pattern: ast::Pat) -> Option<String> {
     };
 
     pattern.name().map(|name| name.text().to_string())
-}
-
-pub(super) fn syntax_contains_ident(syntax: &SyntaxNode, name: &str) -> bool {
-    syntax
-        .descendants()
-        .filter_map(ast::PathExpr::cast)
-        .any(|path_expr| {
-            path_expr.path().is_some_and(|path| {
-                path.qualifier().is_none()
-                    && path
-                        .segment()
-                        .and_then(|segment| segment.name_ref())
-                        .is_some_and(|ident| ident.text() == name)
-            })
-        })
 }
 
 pub(super) fn literal_elem_size(expr: &ast::Expr) -> Option<u64> {

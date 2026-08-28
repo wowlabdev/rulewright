@@ -96,14 +96,15 @@ fn is_constructor(function: &ast::Fn) -> bool {
 fn visibility_rank(function: &ast::Fn) -> u8 {
     match function.visibility() {
         None => PRIVATE_METHOD_RANK,
+
         Some(visibility) if visibility.syntax().text().to_string().trim() == "pub" => {
             PUBLIC_METHOD_RANK
         }
+
         Some(_) => RESTRICTED_METHOD_RANK,
     }
 }
 
-// #rw(fn: rust_clone_in_loop) syntax-editor sorting requires detached copies of source items
 fn fix_impl_member_order(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
     let mut changed = false;
@@ -137,5 +138,10 @@ fn fix_impl_member_order(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<
 
 crate::rulewright_ast_test!(check_impl_member_order, {
     crate::example_tests!(EXAMPLES, check_impl_member_order);
-    crate::fix_tests!(ast_tree, check_impl_member_order, fix_impl_member_order);
+    crate::fix_tests!(
+        EXAMPLES,
+        ast_tree,
+        check_impl_member_order,
+        fix_impl_member_order
+    );
 });

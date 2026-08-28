@@ -1,4 +1,4 @@
-use ra_ap_syntax::{AstNode, ast, ast::HasArgList};
+use ra_ap_syntax::{AstNode, ast, ast::HasArgList, ast::HasAttrs};
 
 use crate::{AstCtx, Example, Violation};
 
@@ -25,6 +25,11 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
+        label: "documented boundary error normalization",
+        code: "#[expect(clippy::map_err_ignore, reason = \"wire contract exposes stable error categories\")] fn f() { let _ = Ok::<i32, i32>(1).map_err(|_| \"bad\"); }",
+        pass: true,
+    },
+    Example {
         label: "discard in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn t() { let _ = Ok::<i32, i32>(1).map_err(|_| \"bad\"); }\n}",
         pass: true,
@@ -40,7 +45,7 @@ crate::ast_rule!(
 
 fn check_missing_error_context(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::MethodCallExpr>()
-        .filter(|call| !ctx.is_in_test(call))
+        .filter(|call| !ctx.is_in_test(call) && !has_documented_normalization(call))
         .filter_map(|call| {
             let method = call.name_ref()?;
 
@@ -63,6 +68,21 @@ fn check_missing_error_context(ctx: &AstCtx<'_>) -> Vec<Violation> {
             })
         })
         .collect()
+}
+
+fn has_documented_normalization(call: &ast::MethodCallExpr) -> bool {
+    call.syntax()
+        .ancestors()
+        .find_map(ast::Fn::cast)
+        .is_some_and(|function| {
+            function.attrs().any(|attribute| {
+                let source = attribute.syntax().text().to_string();
+
+                source.contains("expect(")
+                    && source.contains("clippy::map_err_ignore")
+                    && source.contains("reason")
+            })
+        })
 }
 
 crate::rulewright_ast_test!(check_missing_error_context, {

@@ -142,7 +142,6 @@ fn misplaced_directives(rel: &str, directive_lines: &[usize], header_end: usize)
         .collect()
 }
 
-// #rw(fn: rust_alloc_in_loop) each duplicate directive needs its own diagnostic message
 fn duplicate_reason_violations(
     rel: &str,
     lines: &[&str],

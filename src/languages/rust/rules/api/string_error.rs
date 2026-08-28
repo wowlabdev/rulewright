@@ -79,6 +79,7 @@ fn string_error_type(ty: &ast::Type) -> bool {
 
             segment.is_some_and(|name| name.text() == "String")
         }
+
         ast::Type::RefType(reference) => {
             let path = reference
                 .ty()
@@ -91,6 +92,7 @@ fn string_error_type(ty: &ast::Type) -> bool {
             path.and_then(|segment| segment.name_ref())
                 .is_some_and(|name| name.text() == "str")
         }
+
         _ => false,
     }
 }

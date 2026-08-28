@@ -6,9 +6,9 @@ use crate::{AstCtx, Example, Violation};
 #[rustfmt::skip]
 const EXAMPLES: &[Example] = &[
     Example {
-        label: "async for loop with call but no await",
+        label: "bounded async for loop",
         code: "async fn f(xs: &[u32]) { for x in xs { process(*x); } }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "loop in async block without await",
@@ -16,9 +16,9 @@ const EXAMPLES: &[Example] = &[
         pass: false,
     },
     Example {
-        label: "three statements without calls or await",
+        label: "bounded for loop with several statements",
         code: "async fn f(xs: &[u32]) { for x in xs { let a = *x; let b = a + 1; let _c = b - a; } }",
-        pass: false,
+        pass: true,
     },
     Example {
         label: "loop yields via yield_now().await",
@@ -29,6 +29,11 @@ const EXAMPLES: &[Example] = &[
         label: "sync fn loop is fine",
         code: "fn f(xs: &[u32]) { for x in xs { process(*x); } }",
         pass: true,
+    },
+    Example {
+        label: "async while loop without yield",
+        code: "async fn f(mut ready: bool) { while ready { ready = poll(); } }",
+        pass: false,
     },
     Example {
         label: "tiny accumulation loop without calls",
@@ -54,16 +59,12 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     async_loop_no_yield,
-    "Flag loops in async contexts whose bodies never `.await` (CPU-bound work without yield points).",
-    "CPU-bound async loops must cooperatively yield (yield_now().await) so they do not starve the runtime.",
+    "Flag potentially unbounded `loop`/`while` work in async contexts whose bodies never `.await`.",
+    "Potentially unbounded CPU work in an async task must cooperate with the runtime or move to a blocking/worker boundary. Finite `for` traversals are not enough evidence by themselves: chunk or yield those only when their input size and measured runtime justify it.",
 );
 
 fn check_async_loop_no_yield(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let mut violations = Vec::new();
-
-    for node in ctx.nodes::<ast::ForExpr>() {
-        check_loop(ctx, &node, &mut violations);
-    }
 
     for node in ctx.nodes::<ast::WhileExpr>() {
         check_loop(ctx, &node, &mut violations);

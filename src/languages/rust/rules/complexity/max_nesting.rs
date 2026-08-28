@@ -29,13 +29,16 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     max_nesting,
     "Flag nesting depth > threshold levels.",
-    "Deeply nested code is hard to follow. Use early returns, guard clauses, or extract helper functions.",
+    "Deeply nested code hides the active conditions. Prefer early returns, guard clauses, or a helper for a coherent sub-operation; do not invert straightforward control flow or extract arbitrary blocks solely to lower the measured depth.",
     Medium,
     params { threshold: i64 = 5 },
 );
 
 fn check_max_nesting(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let max_depth = ctx.file.config.get_usize("rust_max_nesting", &PARAMS[0]);
+    let max_depth = ctx
+        .file
+        .config
+        .get_usize("rust_max_nesting", &MAX_NESTING_PARAMS[0]);
 
     ctx.nodes::<ast::Fn>()
         .filter(|function| !ctx.is_in_test(function))
@@ -65,49 +68,72 @@ struct NestingDepth {
     max: usize,
 }
 
+enum PendingVisit {
+    Node(SyntaxNode, usize),
+    Expression(ast::Expr, usize),
+}
+
+fn queue_children(node: &SyntaxNode, current: usize, pending: &mut Vec<PendingVisit>) {
+    for child in node.children() {
+        if child.kind() == SyntaxKind::FN {
+            continue;
+        }
+
+        match ast::Expr::cast(child.clone()) {
+            Some(expression) => pending.push(PendingVisit::Expression(expression, current)),
+            None => pending.push(PendingVisit::Node(child, current)),
+        }
+    }
+}
+
 impl NestingDepth {
     fn visit_node(&mut self, node: &SyntaxNode, current: usize) {
-        for child in node.children() {
-            if child.kind() == SyntaxKind::FN {
-                continue;
-            }
+        let mut pending = vec![PendingVisit::Node(node.clone(), current)];
 
-            if ast::Expr::can_cast(child.kind()) {
-                let Some(expression) = ast::Expr::cast(child) else {
-                    continue;
-                };
+        while let Some(visit) = pending.pop() {
+            match visit {
+                PendingVisit::Node(node, depth) => queue_children(&node, depth, &mut pending),
 
-                self.visit_expression(&expression, current);
-            } else {
-                self.visit_node(&child, current);
+                PendingVisit::Expression(expression, depth) => {
+                    self.visit_expression(&expression, depth, &mut pending);
+                }
             }
         }
     }
 
-    // #rw(fn: rust_cyclomatic_complexity) structural dispatch mirrors the five nesting constructs
-    fn visit_expression(&mut self, expression: &ast::Expr, current: usize) {
+    fn visit_expression(
+        &mut self,
+        expression: &ast::Expr,
+        current: usize,
+        pending: &mut Vec<PendingVisit>,
+    ) {
         match expression {
             ast::Expr::IfExpr(expression) => {
                 if let Some(condition) = expression.condition() {
-                    self.visit_expression(&condition, current);
+                    pending.push(PendingVisit::Expression(condition, current));
                 }
 
                 if let Some(branch) = expression.then_branch() {
-                    self.visit_nested(branch.syntax(), current);
+                    self.queue_nested(branch.syntax(), current, pending);
                 }
 
                 if let Some(branch) = expression.else_branch() {
                     match branch {
-                        ast::ElseBranch::Block(branch) => self.visit_node(branch.syntax(), current),
+                        ast::ElseBranch::Block(branch) => {
+                            self.queue_nested(branch.syntax(), current, pending);
+                        }
+
                         ast::ElseBranch::IfExpr(branch) => {
-                            self.visit_expression(&ast::Expr::IfExpr(branch), current);
+                            pending
+                                .push(PendingVisit::Expression(ast::Expr::IfExpr(branch), current));
                         }
                     }
                 }
             }
+
             ast::Expr::MatchExpr(expression) => {
                 if let Some(scrutinee) = expression.expr() {
-                    self.visit_expression(&scrutinee, current);
+                    pending.push(PendingVisit::Expression(scrutinee, current));
                 }
 
                 let nested = current + 1;
@@ -117,47 +143,51 @@ impl NestingDepth {
                 if let Some(arms) = expression.match_arm_list() {
                     for arm in arms.arms() {
                         if let Some(condition) = arm.guard().and_then(|guard| guard.condition()) {
-                            self.visit_expression(&condition, nested);
+                            pending.push(PendingVisit::Expression(condition, nested));
                         }
 
                         if let Some(body) = arm.expr() {
-                            self.visit_expression(&body, nested);
+                            pending.push(PendingVisit::Expression(body, nested));
                         }
                     }
                 }
             }
+
             ast::Expr::ForExpr(expression) => {
                 if let Some(iterable) = expression.iterable() {
-                    self.visit_expression(&iterable, current);
+                    pending.push(PendingVisit::Expression(iterable, current));
                 }
 
                 if let Some(body) = expression.loop_body() {
-                    self.visit_nested(body.syntax(), current);
+                    self.queue_nested(body.syntax(), current, pending);
                 }
             }
+
             ast::Expr::WhileExpr(expression) => {
                 if let Some(condition) = expression.condition() {
-                    self.visit_expression(&condition, current);
+                    pending.push(PendingVisit::Expression(condition, current));
                 }
 
                 if let Some(body) = expression.loop_body() {
-                    self.visit_nested(body.syntax(), current);
+                    self.queue_nested(body.syntax(), current, pending);
                 }
             }
+
             ast::Expr::LoopExpr(expression) => {
                 if let Some(body) = expression.loop_body() {
-                    self.visit_nested(body.syntax(), current);
+                    self.queue_nested(body.syntax(), current, pending);
                 }
             }
-            _ => self.visit_node(expression.syntax(), current),
+
+            _ => pending.push(PendingVisit::Node(expression.syntax().clone(), current)),
         }
     }
 
-    fn visit_nested(&mut self, body: &SyntaxNode, current: usize) {
+    fn queue_nested(&mut self, body: &SyntaxNode, current: usize, pending: &mut Vec<PendingVisit>) {
         let nested = current + 1;
 
         self.max = self.max.max(nested);
-        self.visit_node(body, nested);
+        pending.push(PendingVisit::Node(body.clone(), nested));
     }
 }
 
@@ -202,5 +232,35 @@ crate::rulewright_ast_test!(check_max_nesting, {
         verify_true!(run(src).is_empty())?;
 
         Ok(())
+    }
+
+    #[gtest]
+    fn nested_else_blocks_count_toward_the_limit() -> Result<()> {
+        let source = "fn f() {
+            if a {} else {                 // 1
+                if b {} else {             // 2
+                    if c {} else {         // 3
+                        if d {} else {     // 4
+                            if e {} else { // 5
+                                if f {}    // 6
+                            }
+                        }
+                    }
+                }
+            }
+        }";
+        let violations = run(source);
+
+        verify_eq!(violations.len(), 1)?;
+
+        verify_true!(violations[0].message.contains("nesting depth 6"))
+    }
+
+    #[gtest]
+    fn else_if_chain_is_one_control_level() -> Result<()> {
+        let source =
+            "fn f() { if a {} else if b {} else if c {} else if d {} else if e {} else if f {} }";
+
+        verify_true!(run(source).is_empty())
     }
 });
