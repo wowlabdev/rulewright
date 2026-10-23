@@ -19,6 +19,7 @@ crate::language_workspace_rule!(
     "Restrict path dependency declarations and patches to approved manifests and workspace-local paths.",
     "Centralizing path declarations makes local dependency sources reviewable. Rejecting paths outside the workspace prevents builds from silently depending on sibling checkouts.",
     High,
+    default = false,
     params {
         allow_in: [String] = ["Cargo.toml"],
         allow_outside_workspace: bool = false,

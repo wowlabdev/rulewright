@@ -12,6 +12,8 @@ crate::language_workspace_rule!(
     "Reject dependency edges configured as manifest-glob !> package-glob,package-glob.",
     "Explicit dependency boundaries prevent accidental coupling between workspace layers. Configure the boundaries appropriate to your project; no package names are reserved.",
     High,
+    default = false,
+    full_manifest_graph = true,
     params {
         rules: [String] = []
     },

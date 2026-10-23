@@ -271,7 +271,7 @@ pub struct Example {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-// #rw(rust_non_exhaustive_on_public) internal enum, all variants matched within this crate
+#[non_exhaustive]
 pub enum ParamType {
     Bool,
     Int,
@@ -290,7 +290,7 @@ impl ParamType {
 }
 
 #[derive(Clone, Copy, Debug)]
-// #rw(rust_non_exhaustive_on_public) internal enum, all variants matched within this crate
+#[non_exhaustive]
 pub enum ParamDefault {
     Bool(bool),
     Int(i64),
@@ -340,6 +340,9 @@ pub struct RuleInfo {
     pub examples: &'static [Example],
     pub params: &'static [RuleParam],
     pub default_enabled: bool,
+    /// Receive all manifests, including those outside this rule's configured scope.
+    /// Rules using this capability must apply configuration scope to reported sources.
+    pub needs_full_manifest_graph: bool,
 }
 
 impl RuleInfo {
@@ -361,6 +364,7 @@ impl RuleInfo {
             examples,
             params,
             default_enabled: true,
+            needs_full_manifest_graph: false,
         }
     }
 
@@ -368,6 +372,14 @@ impl RuleInfo {
     #[must_use]
     pub const fn disabled_by_default(mut self) -> Self {
         self.default_enabled = false;
+
+        self
+    }
+
+    /// Retain out-of-scope manifests for dependency graph resolution.
+    #[must_use]
+    pub const fn with_full_manifest_graph(mut self) -> Self {
+        self.needs_full_manifest_graph = true;
 
         self
     }

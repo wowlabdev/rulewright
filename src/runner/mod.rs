@@ -871,7 +871,7 @@ fn workspace_violations(
             .manifests
             .iter()
             .filter(|manifest| {
-                rule.info.name == "toml_cargo_layers"
+                rule.info.needs_full_manifest_graph
                     || workspace_ctx
                         .config
                         .applies_to(rule.info.name, &manifest.rel)

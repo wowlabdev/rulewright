@@ -3,7 +3,7 @@
     reason = "fixture assertions use explicit collection emptiness"
 )]
 use super::*;
-use crate::{RuleInfo, RulePack, Severity, directory, temporary::Directory};
+use crate::{RuleInfo, RulePack, Severity, WorkspaceManifest, directory, temporary::Directory};
 
 fn production(ctx: &FileCtx<'_>) -> Vec<Violation> {
     (!ctx.test_only)
@@ -75,6 +75,33 @@ fn fixture() -> Directory {
     .unwrap();
     file::write_text(&temp.path().join("src/lib.rs"), "pub fn clean() {}\n").unwrap();
     temp
+}
+
+#[test]
+fn pack_capability_retains_out_of_scope_manifest_targets() {
+    fn check(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
+        assert_eq!(ctx.manifests.len(), 2);
+        vec![crate::violation("Cargo.toml", 1, "graph resolved")]
+    }
+    static RULE: Rule = Rule::workspace(INFO.with_full_manifest_graph(), check);
+    let mut config = Config::generate_default(&[(INFO.name, &[])]);
+
+    config.rules.get_mut(INFO.name).unwrap().only = vec!["Cargo.toml".to_owned()];
+    let manifests = ["Cargo.toml", "other/Cargo.toml"].map(|rel| WorkspaceManifest {
+        rel: rel.to_owned(),
+        package_name: None,
+        patch_tables: BTreeMap::new(),
+        workspace_dependencies: Vec::new(),
+        dependencies: Vec::new(),
+    });
+    let ctx = WorkspaceCtx {
+        paths: &[],
+        files: &[],
+        manifests: &manifests,
+        config: &config,
+    };
+
+    assert_eq!(workspace_violations(None, &[&RULE], &ctx).len(), 1);
 }
 
 fn scan(

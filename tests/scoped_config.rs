@@ -158,6 +158,57 @@ fn line_and_ast_dispatch_honor_only_and_overrides() {
 }
 
 #[test]
+fn baseline_forbid_is_global_and_rejects_unknown_ids() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+
+    root_package(root, "baseline-global", "pub fn clean() {}\n");
+    initialize(root);
+    write(
+        &root.join("baseline.json"),
+        r#"{"schema_version":1,"findings":[]}"#,
+    );
+
+    for args in [
+        vec![
+            "check",
+            "--baseline",
+            "baseline.json",
+            "--baseline-forbid",
+            "rust_dbg",
+        ],
+        vec![
+            "--baseline-forbid",
+            "rust_dbg",
+            "check",
+            "--baseline",
+            "baseline.json",
+        ],
+    ] {
+        let mut args = args;
+
+        args.extend(["--rule", "rust_dbg"]);
+        let output = run(root, &args);
+
+        assert!(output.status.success(), "{}", text(&output));
+    }
+
+    let output = run(
+        root,
+        &[
+            "check",
+            "--baseline",
+            "baseline.json",
+            "--baseline-forbid",
+            "rust_dgb",
+        ],
+    );
+
+    assert!(!output.status.success());
+    assert!(text(&output).contains("unknown baseline-forbid rule: rust_dgb"));
+}
+
+#[test]
 fn baseline_forbid_rejects_stale_entries_and_requires_baseline() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path();
@@ -284,6 +335,10 @@ fn manifest_policy_change_cannot_reuse_cached_success() {
     let config_path = root.join("rulewright.toml");
     let original = std::fs::read_to_string(&config_path)
         .unwrap()
+        .replace(
+            "[rules.toml_cargo_layers]\nenabled = false",
+            "[rules.toml_cargo_layers]\nenabled = true",
+        )
         .replace("only = []\n", "")
         .replace("overrides = []\n", "");
 

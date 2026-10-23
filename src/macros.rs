@@ -311,6 +311,7 @@ macro_rules! _rule_info {
             examples: EXAMPLES,
             params: $params,
             default_enabled: true,
+            needs_full_manifest_graph: false,
         }
     };
 }
@@ -327,6 +328,7 @@ macro_rules! _rule_info_disabled {
             examples: EXAMPLES,
             params: $params,
             default_enabled: false,
+            needs_full_manifest_graph: false,
         }
     };
 }
@@ -456,10 +458,17 @@ macro_rules! _submit_workspace_rule {
 #[doc(hidden)]
 macro_rules! _submit_language_workspace_rule {
     ($name:ident, $desc:expr, $just:expr, $sev:ident, $params:expr) => {
+        $crate::_submit_language_workspace_rule!($name, $desc, $just, $sev, $params, true, false);
+    };
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, $params:expr, $default:expr, $graph:expr) => {
         $crate::__paste::paste! {
             $crate::__inventory::submit! {
                 $crate::Rule {
-                    info: $crate::_rule_info!(stringify!($name), $desc, $just, $sev, $params),
+                    info: $crate::RuleInfo {
+                        default_enabled: $default,
+                        needs_full_manifest_graph: $graph,
+                        ..$crate::_rule_info!(stringify!($name), $desc, $just, $sev, $params)
+                    },
                     check: $crate::RuleCheck::Workspace([<check_ $name>]),
                     fix: None,
                 }
@@ -793,6 +802,15 @@ macro_rules! workspace_rule {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! language_workspace_rule {
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, default = false, full_manifest_graph = $graph:expr, params { $($params:tt)* } $(,)?) => {
+        $crate::_declare_params!($name; $($params)*);
+        $crate::__paste::paste! {
+            $crate::_submit_language_workspace_rule!($name, $desc, $just, $sev, [<$name:upper _PARAMS>], false, $graph);
+        }
+    };
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, default = false, params { $($params:tt)* } $(,)?) => {
+        $crate::language_workspace_rule!($name, $desc, $just, $sev, default = false, full_manifest_graph = false, params { $($params)* });
+    };
     ($name:ident, $desc:expr, $just:expr, $sev:ident, params { $($params:tt)* } $(,)?) => {
         $crate::_declare_params!($name; $($params)*);
         $crate::__paste::paste! {

@@ -1,5 +1,11 @@
 # Rule packs
 
+Graph rules can opt into all manifests with
+`RuleInfo::new(...).with_full_manifest_graph()`. This retains out-of-scope target
+and virtual manifests for dependency resolution. Check `ctx.config.applies_to`
+for each source before emitting findings. Other workspace rules receive scoped
+manifests. Construct metadata with `RuleInfo::new` to inherit capability defaults.
+
 Do not fork Rulewright just because your repository has rules nobody else needs. Put that policy in the consuming repository or its own crate, combine it with the generic built-ins, and ship a tiny wrapper binary. The result is ordinary statically linked Rust with no plugin loader involved.
 
 This minimal line rule is buildable with the public API:
