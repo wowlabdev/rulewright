@@ -77,10 +77,11 @@ crate::ast_rule!(
 );
 
 fn check_concrete_io_param(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let types = ctx
-        .file
-        .config
-        .get_str_array("rust_concrete_io_param", &CONCRETE_IO_PARAM_PARAMS[0]);
+    let types = ctx.file.config.get_str_array(
+        "rust_concrete_io_param",
+        &CONCRETE_IO_PARAM_PARAMS[0],
+        ctx.file.rel,
+    );
 
     ctx.nodes::<ast::Fn>()
         .filter(|function| {

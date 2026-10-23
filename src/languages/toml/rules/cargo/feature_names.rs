@@ -38,6 +38,7 @@ fn check_toml_cargo_feature_names(ctx: &TomlCtx<'_>) -> Vec<Violation> {
     let allowed = ctx.file.config.get_str_array(
         "toml_cargo_feature_names",
         &TOML_CARGO_FEATURE_NAMES_PARAMS[0],
+        ctx.file.rel,
     );
 
     features

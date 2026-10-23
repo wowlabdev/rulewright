@@ -15,6 +15,10 @@ pub struct ConfigRule {
     pub enabled: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ignore: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub only: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overrides: Vec<crate::infra::config::RuleOverride>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub params: Option<BTreeMap<String, ConfigValue>>,
 }
@@ -269,6 +273,7 @@ pub struct Example {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 // #rw(rust_non_exhaustive_on_public) internal enum, all variants matched within this crate
 pub enum ParamType {
+    Bool,
     Int,
     StringArray,
 }
@@ -277,6 +282,7 @@ impl ParamType {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Bool => "bool",
             Self::Int => "i64",
             Self::StringArray => "string-array",
         }
@@ -286,6 +292,7 @@ impl ParamType {
 #[derive(Clone, Copy, Debug)]
 // #rw(rust_non_exhaustive_on_public) internal enum, all variants matched within this crate
 pub enum ParamDefault {
+    Bool(bool),
     Int(i64),
     StringArray(&'static [&'static str]),
 }
@@ -425,6 +432,10 @@ fn validate_rule(pack: &'static str, rule: &Rule) -> Result<(), RegistryError> {
     let mut params = HashSet::new();
 
     for parameter in rule.info.params {
+        if ["enabled", "ignore", "only", "overrides"].contains(&parameter.name) {
+            return Err(invalid("parameter name is reserved for rule configuration"));
+        }
+
         if !valid_identifier(parameter.name) {
             return Err(invalid(
                 "parameter names must be valid lowercase identifiers",
@@ -440,7 +451,7 @@ fn validate_rule(pack: &'static str, rule: &Rule) -> Result<(), RegistryError> {
                 return Err(invalid("integer parameter defaults must be non-negative"));
             }
 
-            (ParamType::Int, ParamDefault::Int(_)) => {}
+            (ParamType::Int, ParamDefault::Int(_)) | (ParamType::Bool, ParamDefault::Bool(_)) => {}
 
             (ParamType::StringArray, ParamDefault::StringArray(defaults)) => {
                 let mut unique_defaults = HashSet::new();

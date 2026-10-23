@@ -30,7 +30,7 @@ mod working_directory;
 
 pub use cli::{run_cli, run_with_registry};
 pub(crate) use glob::matches_ignore;
-pub use infra::config::{Config, ConfigError};
+pub use infra::config::{Config, ConfigError, RuleOverride};
 pub use infra::{
     ctx::{FileCtx, Violation, violation},
     fix::Fix,
@@ -39,8 +39,8 @@ pub use languages::{
     rust::{AstCtx, RustLocation},
     toml::TomlCtx,
     workspace::{
-        DependencyRecord, FunctionRecord, ShingleFingerprint, StringRecord, StructRecord,
-        WorkspaceCtx, WorkspaceManifest, WorkspaceRustFile,
+        DependencyRecord, DependencySection, DependencySource, FunctionRecord, ShingleFingerprint,
+        StringRecord, StructRecord, WorkspaceCtx, WorkspaceManifest, WorkspaceRustFile,
     },
 };
 pub use path::{Path, PathBuf};
@@ -49,9 +49,7 @@ pub use registry::{
     RuleFix, RuleInfo, RuleKind, RuleMeta, RulePack, RuleParam, RuleRegistry, Severity, all_rules,
 };
 #[cfg(test)]
-pub(crate) use test_support::{
-    apply_ast_fixes, apply_ast_tree_fix, apply_line_fixes, check_workspace_sources,
-};
+pub(crate) use test_support::{apply_ast_fixes, apply_ast_tree_fix, apply_line_fixes};
 
 #[cfg(test)]
 mod test_support;

@@ -741,9 +741,21 @@ allowed = []
 enabled = true
 ignore = []
 
+[rules.toml_cargo_layers]
+enabled = true
+ignore = []
+rules = []
+
 [rules.toml_cargo_msrv]
 enabled = true
 ignore = []
+
+[rules.toml_cargo_path_deps]
+enabled = true
+ignore = []
+allow_in = ["Cargo.toml"]
+allow_outside_workspace = false
+allow_patch = false
 
 [rules.toml_cargo_unused_deps]
 enabled = true

@@ -48,12 +48,6 @@ struct Located<'a> {
 }
 
 fn check_param_clump(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
-    let min_clump = ctx
-        .config
-        .get_usize("rust_param_clump", &PARAM_CLUMP_PARAMS[0]);
-    let min_fns = ctx
-        .config
-        .get_usize("rust_param_clump", &PARAM_CLUMP_PARAMS[1]);
     let functions: Vec<Located<'_>> = ctx
         .files
         .iter()
@@ -78,18 +72,12 @@ fn check_param_clump(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
         members.sort_unstable();
         members.dedup();
 
-        if members.len() >= min_fns {
-            clumps.entry(members).or_default().push(parameter);
-        }
+        clumps.entry(members).or_default().push(parameter);
     }
 
     clumps
         .into_iter()
         .filter_map(|(members, mut parameters)| {
-            if parameters.len() < min_clump {
-                return None;
-            }
-
             parameters.sort_unstable();
             let mut located: Vec<Located<'_>> = members
                 .iter()
@@ -98,6 +86,11 @@ fn check_param_clump(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
 
             located.sort_by_key(|item| (item.rel, item.record.line));
             let anchor = *located.last()?;
+            let min_clump = ctx.config.get_usize("rust_param_clump", &PARAM_CLUMP_PARAMS[0], anchor.rel);
+            let min_fns = ctx.config.get_usize("rust_param_clump", &PARAM_CLUMP_PARAMS[1], anchor.rel);
+
+            if parameters.len() < min_clump || located.len() < min_fns { return None; }
+
             let fields = parameters
                 .iter()
                 .map(|(name, ty)| format!("{name}: {ty}"))

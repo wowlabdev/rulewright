@@ -23,10 +23,12 @@ fn check_too_many_lines_in_file(ctx: &FileCtx<'_>) -> Vec<Violation> {
     let max_lines = ctx.config.get_usize(
         "rust_too_many_lines_in_file",
         &TOO_MANY_LINES_IN_FILE_PARAMS[0],
+        ctx.rel,
     );
     let slack_percent = ctx.config.get_usize(
         "rust_too_many_lines_in_file",
         &TOO_MANY_LINES_IN_FILE_PARAMS[1],
+        ctx.rel,
     );
     let budget = ctx.lines.iter().find_map(|line| {
         let crate::infra::parse::DirectiveResult::Valid(directive) =

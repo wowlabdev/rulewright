@@ -148,14 +148,14 @@ crate::ast_rule!(
 );
 
 fn check_magic_numbers(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let allowed = ctx
-        .file
-        .config
-        .get_str_array("rust_magic_numbers", &MAGIC_NUMBERS_PARAMS[0]);
-    let min_occurrences = ctx
-        .file
-        .config
-        .get_usize("rust_magic_numbers", &MAGIC_NUMBERS_PARAMS[1]);
+    let allowed =
+        ctx.file
+            .config
+            .get_str_array("rust_magic_numbers", &MAGIC_NUMBERS_PARAMS[0], ctx.file.rel);
+    let min_occurrences =
+        ctx.file
+            .config
+            .get_usize("rust_magic_numbers", &MAGIC_NUMBERS_PARAMS[1], ctx.file.rel);
     let mut occurrences: BTreeMap<(usize, String, String), Vec<ast::Literal>> = BTreeMap::new();
 
     for literal in ctx.nodes::<ast::Literal>().filter(|literal| {

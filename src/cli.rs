@@ -86,6 +86,9 @@ struct Args {
     /// Ignore findings already recorded in this baseline file.
     #[arg(long, global = true, value_name = "PATH")]
     baseline: Option<std::path::PathBuf>,
+    /// Reject a baseline containing any of these comma-separated rule IDs.
+    #[arg(long, value_delimiter = ',', requires = "baseline")]
+    baseline_forbid: Vec<String>,
     /// Record the current findings as an adoption baseline.
     #[arg(
         long,
@@ -285,6 +288,7 @@ fn analysis_failed(
         report_format,
         baseline_path.as_deref(),
         write_baseline_path.as_deref(),
+        &args.baseline_forbid,
     );
 
     if args.ci {
@@ -680,10 +684,12 @@ fn print_rule_detail(registry: &RuleRegistry, name: &str) -> ExitCode {
     for parameter in rule.params {
         let kind = match parameter.param_type {
             crate::ParamType::Int => "i64",
+            crate::ParamType::Bool => "bool",
             crate::ParamType::StringArray => "[String]",
         };
         let default = match &parameter.default {
             ParamDefault::Int(value) => value.to_string(),
+            ParamDefault::Bool(value) => value.to_string(),
             ParamDefault::StringArray(values) => format!("{values:?}"),
         };
 

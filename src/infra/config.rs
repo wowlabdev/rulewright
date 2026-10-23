@@ -19,6 +19,10 @@ struct RawRuleConfig {
     enabled: bool,
     #[serde(default)]
     ignore: Vec<String>,
+    #[serde(default)]
+    only: Vec<String>,
+    #[serde(default)]
+    overrides: Vec<RuleOverride>,
     #[serde(default, flatten)]
     params: BTreeMap<String, toml::Value>,
 }
@@ -38,8 +42,22 @@ struct RawConfig {
 pub(crate) struct RuleConfig {
     pub(crate) enabled: bool,
     pub(crate) ignore: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) only: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) overrides: Vec<RuleOverride>,
     #[serde(default, flatten)]
     pub(crate) params: BTreeMap<String, toml::Value>,
+}
+
+/// Path-scoped parameter values; matching entries apply in declaration order, last value wins.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RuleOverride {
+    /// Workspace-relative globs, with named glob sets expanded after loading.
+    pub paths: Vec<String>,
+    /// Typed rule parameters overridden on matching paths.
+    #[serde(flatten)]
+    pub params: BTreeMap<String, toml::Value>,
 }
 
 /// Top-level rulewright configuration loaded from `rulewright.toml`.
@@ -124,19 +142,35 @@ impl Config {
         self.rules.get(name).map_or(&[], |r| &r.ignore)
     }
 
+    /// Whether a path is in the rule's positive scope and outside its ignores.
+    #[must_use]
+    pub fn applies_to(&self, name: &str, rel: &str) -> bool {
+        self.rules.get(name).is_none_or(|rule| {
+            (rule.only.is_empty() || crate::matches_ignore(rel, &rule.only))
+                && !crate::matches_ignore(rel, &rule.ignore)
+        })
+    }
+
+    fn parameter(&self, rule: &str, param: &RuleParam, rel: &str) -> Option<&toml::Value> {
+        let rule = self.rules.get(rule)?;
+
+        rule.overrides
+            .iter()
+            .rev()
+            .filter(|entry| crate::matches_ignore(rel, &entry.paths))
+            .find_map(|entry| entry.params.get(param.name))
+            .or_else(|| rule.params.get(param.name))
+    }
+
     // #rw(rust_getter_prefix) keyed param lookup mirrors the toml::Value getter family
-    pub fn get_str_array(&self, rule: &str, param: &RuleParam) -> Vec<String> {
-        let configured = self
-            .rules
-            .get(rule)
-            .and_then(|r| r.params.get(param.name))
-            .and_then(|v| v.as_array());
+    pub fn get_str_array(&self, rule: &str, param: &RuleParam, rel: &str) -> Vec<String> {
+        let configured = self.parameter(rule, param, rel).and_then(|v| v.as_array());
 
         configured.map_or_else(
             || match &param.default {
                 ParamDefault::StringArray(d) => d.iter().map(ToString::to_string).collect(),
 
-                ParamDefault::Int(_) => {
+                ParamDefault::Int(_) | ParamDefault::Bool(_) => {
                     unreachable!("get_str_array is only called for StringArray params")
                 }
             },
@@ -168,6 +202,22 @@ impl Config {
 
             for p in *params {
                 Self::validate_param(name, p, rule_cfg, &mut errors);
+            }
+
+            for entry in &rule_cfg.overrides {
+                let mut merged = rule_cfg.clone();
+
+                merged.params.extend(entry.params.clone());
+
+                for p in *params {
+                    Self::validate_param(name, p, &merged, &mut errors);
+                }
+
+                for key in entry.params.keys() {
+                    if !params.iter().any(|param| param.name == key) {
+                        errors.push(format!("rule `{name}` override has unknown param `{key}`"));
+                    }
+                }
             }
 
             let known: HashSet<&str> = params.iter().map(|p| p.name).collect();
@@ -203,6 +253,8 @@ impl Config {
                     let val = match &p.default {
                         ParamDefault::Int(d) => toml::Value::Integer(*d),
 
+                        ParamDefault::Bool(d) => toml::Value::Boolean(*d),
+
                         ParamDefault::StringArray(d) => toml::Value::Array(
                             d.iter()
                                 .map(|s| toml::Value::String(s.to_string()))
@@ -218,6 +270,8 @@ impl Config {
                     RuleConfig {
                         enabled: true,
                         ignore: Vec::new(),
+                        only: Vec::new(),
+                        overrides: Vec::new(),
                         params: param_map,
                     },
                 );
@@ -242,6 +296,8 @@ impl Config {
                 let val = match &p.default {
                     ParamDefault::Int(d) => toml::Value::Integer(*d),
 
+                    ParamDefault::Bool(d) => toml::Value::Boolean(*d),
+
                     ParamDefault::StringArray(d) => toml::Value::Array(
                         d.iter()
                             .map(|s| toml::Value::String(s.to_string()))
@@ -257,6 +313,8 @@ impl Config {
                 RuleConfig {
                     enabled: true,
                     ignore: Vec::new(),
+                    only: Vec::new(),
+                    overrides: Vec::new(),
                     params: param_map,
                 },
             );
@@ -333,6 +391,12 @@ impl Config {
                     category: rule.kind.as_str().to_owned(),
                     fixable: rule.fixable,
                     enabled: configured.is_some_and(|config| config.enabled),
+                    only: configured
+                        .map(|config| config.only.clone())
+                        .unwrap_or_default(),
+                    overrides: configured
+                        .map(|config| config.overrides.clone())
+                        .unwrap_or_default(),
                     ignore: configured
                         .map(|config| config.ignore.clone())
                         .unwrap_or_default(),
@@ -344,28 +408,36 @@ impl Config {
 
     /// Return a configured integer parameter, or its declared default.
     #[must_use]
-    pub fn get_i64(&self, rule: &str, param: &RuleParam) -> i64 {
-        self.rules
-            .get(rule)
-            .and_then(|r| r.params.get(param.name))
+    pub fn get_i64(&self, rule: &str, param: &RuleParam, rel: &str) -> i64 {
+        self.parameter(rule, param, rel)
             .and_then(toml::Value::as_integer)
             .unwrap_or_else(|| match param.default {
                 ParamDefault::Int(d) => d,
 
-                ParamDefault::StringArray(_) => {
+                ParamDefault::StringArray(_) | ParamDefault::Bool(_) => {
                     unreachable!("get_i64 is only called for Int params")
                 }
             })
     }
 
-    // #rw(rust_getter_prefix) keyed param lookup mirrors the toml::Value getter family
-    pub(crate) fn get_u64(&self, rule: &str, param: &RuleParam) -> u64 {
-        u64::try_from(self.get_i64(rule, param)).unwrap_or_default()
+    /// Return a path-resolved boolean parameter, or its declared default.
+    #[must_use]
+    pub fn get_bool(&self, rule: &str, param: &RuleParam, rel: &str) -> bool {
+        let default = matches!(param.default, ParamDefault::Bool(true));
+
+        self.parameter(rule, param, rel)
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(default)
     }
 
     // #rw(rust_getter_prefix) keyed param lookup mirrors the toml::Value getter family
-    pub fn get_usize(&self, rule: &str, param: &RuleParam) -> usize {
-        usize::try_from(self.get_i64(rule, param)).unwrap_or_default()
+    pub(crate) fn get_u64(&self, rule: &str, param: &RuleParam, rel: &str) -> u64 {
+        u64::try_from(self.get_i64(rule, param, rel)).unwrap_or_default()
+    }
+
+    // #rw(rust_getter_prefix) keyed param lookup mirrors the toml::Value getter family
+    pub fn get_usize(&self, rule: &str, param: &RuleParam, rel: &str) -> usize {
+        usize::try_from(self.get_i64(rule, param, rel)).unwrap_or_default()
     }
 
     pub(crate) fn workspace(&self) -> &super::workspace::WorkspaceContext {
@@ -382,6 +454,8 @@ impl Config {
             .map(|parameter| {
                 let value = match &parameter.default {
                     ParamDefault::Int(default) => toml::Value::Integer(*default),
+
+                    ParamDefault::Bool(default) => toml::Value::Boolean(*default),
 
                     ParamDefault::StringArray(default) => toml::Value::Array(
                         default
@@ -400,6 +474,8 @@ impl Config {
             RuleConfig {
                 enabled,
                 ignore: Vec::new(),
+                only: Vec::new(),
+                overrides: Vec::new(),
                 params,
             },
         );
@@ -461,6 +537,30 @@ impl Config {
                 RuleConfig {
                     enabled: raw_rule.enabled,
                     ignore,
+                    only: resolve_patterns(&raw_rule.only, &raw.glob_sets, rule_name, &mut errors),
+                    overrides: raw_rule
+                        .overrides
+                        .iter()
+                        .map(|entry| {
+                            let paths = resolve_patterns(
+                                &entry.paths,
+                                &raw.glob_sets,
+                                rule_name,
+                                &mut errors,
+                            );
+
+                            if paths.is_empty() {
+                                errors.push(format!(
+                                    "rule `{rule_name}` override paths must not be empty"
+                                ));
+                            }
+
+                            RuleOverride {
+                                paths,
+                                params: entry.params.clone(),
+                            }
+                        })
+                        .collect(),
                     params: raw_rule.params.clone(),
                 },
             );
@@ -491,6 +591,8 @@ impl Config {
         match cfg.params.get(param.name) {
             Some(val) => {
                 let ok = match param.param_type {
+                    ParamType::Bool => val.as_bool().is_some(),
+
                     ParamType::Int => val.as_integer().is_some_and(|value| value >= 0),
 
                     ParamType::StringArray => val.as_array().is_some_and(|values| {
@@ -513,6 +615,8 @@ impl Config {
 
                 if !ok {
                     let expected = match param.param_type {
+                        ParamType::Bool => "a boolean",
+
                         ParamType::Int => "a non-negative integer",
 
                         ParamType::StringArray if !param.allowed_values.is_empty() => {
@@ -526,6 +630,26 @@ impl Config {
                         "rule `{rule}` param `{}` must be {expected}",
                         param.name
                     ));
+                } else if let Some(values) = val.as_array() {
+                    let strings = values
+                        .iter()
+                        .filter_map(toml::Value::as_str)
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>();
+
+                    if rule == "toml_cargo_layers" && param.name == "rules" {
+                        if let Err(error) =
+                            crate::languages::toml::rules::cargo::layers::validate_edges(&strings)
+                        {
+                            errors.push(format!("rule `{rule}`: {error}"));
+                        }
+                    } else if rule == "toml_cargo_path_deps" && param.name == "allow_in" {
+                        for pattern in strings {
+                            if let Err(error) = crate::glob::validate(&pattern) {
+                                errors.push(format!("rule `{rule}`: {error}"));
+                            }
+                        }
+                    }
                 }
             }
 
@@ -542,6 +666,37 @@ impl Config {
 
 fn toml_to_json(value: &toml::Value) -> serde_json::Value {
     serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
+}
+
+fn resolve_patterns(
+    entries: &[String],
+    sets: &BTreeMap<String, Vec<String>>,
+    rule: &str,
+    errors: &mut Vec<String>,
+) -> Vec<String> {
+    let mut result = Vec::new();
+
+    for entry in entries {
+        if let Some(patterns) = sets.get(entry.strip_prefix('@').unwrap_or(entry)) {
+            result.extend(patterns.iter().cloned());
+        } else if entry.starts_with('@') {
+            errors.push(format!(
+                "rule `{rule}` references unknown glob set `{entry}`"
+            ));
+        } else {
+            if let Err(error) = crate::glob::validate(entry) {
+                errors.push(format!(
+                    "rule `{rule}` contains invalid pattern `{entry}`: {error}"
+                ));
+            }
+
+            result.push(entry.clone());
+        }
+    }
+
+    result.sort();
+    result.dedup();
+    result
 }
 
 #[cfg(test)]

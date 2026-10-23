@@ -76,9 +76,11 @@ crate::line_rule!(
 );
 
 fn check_first_doc_sentence(ctx: &FileCtx<'_>) -> Vec<Violation> {
-    let max_words = ctx
-        .config
-        .get_usize("rust_first_doc_sentence", &FIRST_DOC_SENTENCE_PARAMS[0]);
+    let max_words = ctx.config.get_usize(
+        "rust_first_doc_sentence",
+        &FIRST_DOC_SENTENCE_PARAMS[0],
+        ctx.rel,
+    );
     let mut out = Vec::new();
 
     for block in doc_blocks(ctx.lines) {

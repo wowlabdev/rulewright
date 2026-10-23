@@ -3,8 +3,10 @@ use crate::path::Path;
 use super::config::Config;
 
 /// Per-file context passed to line rules with path, raw contents, and pre-split lines.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct FileCtx<'a> {
+    /// Whether Cargo targets and the module graph classify the entire file as test-only.
+    pub test_only: bool,
     pub rel: &'a str,
     pub path: &'a Path,
     /// Cargo package that owns this file, if the file belongs to a workspace member.

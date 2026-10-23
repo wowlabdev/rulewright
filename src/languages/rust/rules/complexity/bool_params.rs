@@ -53,10 +53,10 @@ crate::ast_rule!(
 );
 
 fn check_bool_params(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let threshold = ctx
-        .file
-        .config
-        .get_usize("rust_bool_params", &BOOL_PARAMS_PARAMS[0]);
+    let threshold =
+        ctx.file
+            .config
+            .get_usize("rust_bool_params", &BOOL_PARAMS_PARAMS[0], ctx.file.rel);
 
     ctx.nodes::<ast::Fn>()
         .filter(|function| !ctx.is_in_test(function) && !is_trait_method(function))

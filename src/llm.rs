@@ -93,10 +93,12 @@ fn render_rule_details(mut doc: Doc, rules: &[LlmRuleInfo]) -> Doc {
         for p in r.params {
             let type_str = match p.param_type {
                 crate::ParamType::Int => "i64",
+                crate::ParamType::Bool => "bool",
                 crate::ParamType::StringArray => "[String]",
             };
             let default_str = match &p.default {
                 ParamDefault::Int(d) => d.to_string(),
+                ParamDefault::Bool(d) => d.to_string(),
                 ParamDefault::StringArray(d) => format!("{d:?}"),
             };
             let label = format!("Param: {}", p.name);

@@ -115,10 +115,11 @@ crate::ast_rule!(
 const BUILTIN_ROOTS: &[&str] = &["crate", "self", "super", "std", "core", "alloc"];
 
 fn check_foreign_reexports(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let allowed = ctx
-        .file
-        .config
-        .get_str_array("rust_foreign_reexports", &FOREIGN_REEXPORTS_PARAMS[0]);
+    let allowed = ctx.file.config.get_str_array(
+        "rust_foreign_reexports",
+        &FOREIGN_REEXPORTS_PARAMS[0],
+        ctx.file.rel,
+    );
     let members = ctx.file.config.workspace().members(ctx.file.path);
     let local_mods = local_modules(ctx);
 

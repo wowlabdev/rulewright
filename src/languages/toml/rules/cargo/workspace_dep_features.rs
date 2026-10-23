@@ -35,6 +35,7 @@ fn check_toml_cargo_workspace_dep_features(ctx: &TomlCtx<'_>) -> Vec<Violation> 
     let allowed = ctx.file.config.get_str_array(
         "toml_cargo_workspace_dep_features",
         &TOML_CARGO_WORKSPACE_DEP_FEATURES_PARAMS[0],
+        ctx.file.rel,
     );
 
     let mut violations = Vec::new();

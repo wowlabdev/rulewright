@@ -35,6 +35,7 @@ fn check_inline_test_module_size(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let threshold = ctx.file.config.get_usize(
         "rust_inline_test_module_size",
         &INLINE_TEST_MODULE_SIZE_PARAMS[0],
+        ctx.file.rel,
     );
 
     ctx.nodes::<ast::Module>()

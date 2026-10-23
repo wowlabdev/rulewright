@@ -56,10 +56,11 @@ crate::ast_rule!(
 );
 
 fn check_long_compound_name(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let threshold = ctx
-        .file
-        .config
-        .get_usize("rust_long_compound_name", &LONG_COMPOUND_NAME_PARAMS[0]);
+    let threshold = ctx.file.config.get_usize(
+        "rust_long_compound_name",
+        &LONG_COMPOUND_NAME_PARAMS[0],
+        ctx.file.rel,
+    );
 
     ctx.nodes::<ast::Item>()
         .filter(|item| !ctx.is_in_test(item))

@@ -34,10 +34,11 @@ fn check_toml_cargo_edition(ctx: &TomlCtx<'_>) -> Vec<Violation> {
     let Some(document) = cargo_document(ctx) else {
         return Vec::new();
     };
-    let min_edition = ctx
-        .file
-        .config
-        .get_i64("toml_cargo_edition", &TOML_CARGO_EDITION_PARAMS[0]);
+    let min_edition = ctx.file.config.get_i64(
+        "toml_cargo_edition",
+        &TOML_CARGO_EDITION_PARAMS[0],
+        ctx.file.rel,
+    );
 
     if ctx.file.rel == CARGO_WORKSPACE_REL {
         let mut violations = Vec::new();

@@ -176,10 +176,10 @@ struct Entry {
 
 fn check_padding(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let mut violations = Vec::new();
-    let boundaries = ctx
-        .file
-        .config
-        .get_str_array("rust_padding", &PADDING_PARAMS[0]);
+    let boundaries =
+        ctx.file
+            .config
+            .get_str_array("rust_padding", &PADDING_PARAMS[0], ctx.file.rel);
 
     for list in ctx.nodes::<ast::StmtList>() {
         for entry in missing_gaps(&list, &boundaries) {
@@ -328,10 +328,10 @@ const fn entry_label(entry: &Entry) -> &'static str {
 
 fn fix_padding(ctx: &AstCtx<'_>, _violations: &[Violation]) -> Option<String> {
     let (editor, root) = SyntaxEditor::with_ast_node(ctx.root);
-    let boundaries = ctx
-        .file
-        .config
-        .get_str_array("rust_padding", &PADDING_PARAMS[0]);
+    let boundaries =
+        ctx.file
+            .config
+            .get_str_array("rust_padding", &PADDING_PARAMS[0], ctx.file.rel);
     let mut changed = false;
 
     for list in root.syntax().descendants().filter_map(ast::StmtList::cast) {
@@ -440,6 +440,7 @@ crate::rulewright_ast_test!(check_padding, {
             );
         let lines: Vec<&str> = source.lines().collect();
         let file = crate::FileCtx {
+            test_only: false,
             rel: "fixture.rs",
             path: crate::Path::new("fixture.rs"),
             package_name: None,

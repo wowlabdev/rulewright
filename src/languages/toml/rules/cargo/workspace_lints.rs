@@ -151,7 +151,7 @@ fn required_group_violations(
     for lint in ctx
         .file
         .config
-        .get_str_array("toml_cargo_workspace_lints", param)
+        .get_str_array("toml_cargo_workspace_lints", param, ctx.file.rel)
     {
         match table.and_then(|table| table.get(&lint)) {
             Some(value) if lint_level(value) == Some("allow") => violations.push(violation(

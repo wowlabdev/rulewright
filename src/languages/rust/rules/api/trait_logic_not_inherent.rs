@@ -98,6 +98,7 @@ fn check_trait_logic_not_inherent(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let threshold = ctx.file.config.get_usize(
         "rust_trait_logic_not_inherent",
         &TRAIT_LOGIC_NOT_INHERENT_PARAMS[0],
+        ctx.file.rel,
     );
     let facts = collect_local_facts(ctx);
 

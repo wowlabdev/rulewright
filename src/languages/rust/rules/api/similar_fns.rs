@@ -49,12 +49,6 @@ struct Located<'a> {
 }
 
 fn check_similar_fns(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
-    let min_tokens = ctx
-        .config
-        .get_usize("rust_similar_fns", &SIMILAR_FNS_PARAMS[0]);
-    let jaccard_percent = ctx
-        .config
-        .get_usize("rust_similar_fns", &SIMILAR_FNS_PARAMS[1]);
     let records: Vec<Located<'_>> = ctx
         .files
         .iter()
@@ -62,7 +56,14 @@ fn check_similar_fns(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
         .flat_map(|file| {
             file.functions
                 .iter()
-                .filter(|function| function.body_token_count >= min_tokens)
+                .filter(|function| {
+                    function.body_token_count
+                        >= ctx.config.get_usize(
+                            "rust_similar_fns",
+                            &SIMILAR_FNS_PARAMS[0],
+                            &file.rel,
+                        )
+                })
                 .map(|record| Located {
                     rel: &file.rel,
                     record,
@@ -92,6 +93,10 @@ fn check_similar_fns(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
         .filter_map(|((left_index, right_index), shared_count)| {
             let left = *records.get(left_index)?;
             let right = *records.get(right_index)?;
+            let anchor_rel = left.rel.max(right.rel);
+            let jaccard_percent =
+                ctx.config
+                    .get_usize("rust_similar_fns", &SIMILAR_FNS_PARAMS[1], anchor_rel);
             let left_shingles = &left.record.body_shingles;
             let right_shingles = &right.record.body_shingles;
             let smaller = left_shingles.len().min(right_shingles.len());

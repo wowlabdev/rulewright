@@ -71,10 +71,12 @@ fn check_closure_dense_method_chain(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let closure_threshold = ctx.file.config.get_usize(
         "rust_closure_dense_method_chain",
         &CLOSURE_DENSE_METHOD_CHAIN_PARAMS[0],
+        ctx.file.rel,
     );
     let chain_threshold = ctx.file.config.get_usize(
         "rust_closure_dense_method_chain",
         &CLOSURE_DENSE_METHOD_CHAIN_PARAMS[1],
+        ctx.file.rel,
     );
 
     let outermost_calls = ctx

@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-const CACHE_SCHEMA: u32 = 3;
+const CACHE_SCHEMA: u32 = 4;
 const BASE_DOMAIN: &[u8] = b"rulewright:analysis-base:v1";
 const RUST_CONTEXT_DOMAIN: &[u8] = b"rulewright:rust-context:v1";
 const TOML_CONTEXT_DOMAIN: &[u8] = b"rulewright:toml-context:v1";
@@ -36,6 +36,7 @@ pub(super) struct Session {
     fast_path: PathBuf,
     workspace_path: PathBuf,
     base: Checksum,
+    pub(super) policy_changed: bool,
     tree_checksum: Checksum,
     rust_context: Checksum,
     toml_context: Checksum,
@@ -47,8 +48,7 @@ pub(super) struct Session {
 
 impl Session {
     pub(super) fn open(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Self> {
-        let source_paths =
-            crate::infra::walk::source_paths(ctx.workspace_root, &[], &["rs", "toml"]).ok()?;
+        let source_paths = crate::infra::walk::source_paths(ctx.workspace_root, &[], &[]).ok()?;
         let snapshot = TreeSnapshot::capture(ctx.workspace_root, &source_paths).ok()?;
         let base = base_checksum(ctx, rules)?;
         let rust_context = rust_context_checksum(&snapshot)?;
@@ -74,6 +74,8 @@ impl Session {
         let workspace_path = cache_dir.join("workspace.bin");
         let lock = Lock::try_acquire(&lock_path).ok()?;
         let tree_checksum = snapshot.checksum();
+        let policy_changed = read_binary::<CompleteDocument>(&fast_path)
+            .is_some_and(|document| document.base != base);
         let complete = read_binary::<CompleteDocument>(&fast_path)
             .filter(|document| {
                 document.schema == CACHE_SCHEMA
@@ -103,6 +105,7 @@ impl Session {
             fast_path,
             workspace_path,
             base,
+            policy_changed,
             tree_checksum,
             rust_context,
             toml_context,
@@ -432,6 +435,8 @@ fn base_checksum(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Checksum> 
             append_part(&mut encoded, parameter.param_type.as_str().as_bytes())?;
 
             match &parameter.default {
+                crate::ParamDefault::Bool(value) => append_part(&mut encoded, &[u8::from(*value)])?,
+
                 crate::ParamDefault::Int(value) => {
                     append_part(&mut encoded, &value.to_le_bytes())?;
                 }
@@ -443,6 +448,11 @@ fn base_checksum(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Checksum> 
                 }
             }
         }
+    }
+
+    for manifest in crate::infra::walk::source_paths(ctx.workspace_root, &[], &["toml"]).ok()? {
+        append_part(&mut encoded, manifest.to_str()?.as_bytes())?;
+        append_part(&mut encoded, checksum::file(&manifest).ok()?.as_bytes())?;
     }
 
     Some(checksum::bytes(encoded))
@@ -692,6 +702,7 @@ mod tests {
             },
         }];
         let ctx = WorkspaceCtx {
+            paths: &[],
             files: &files,
             manifests: &[],
             config: &config,
@@ -701,6 +712,7 @@ mod tests {
 
         files[0].functions[0].body_checksum = checksum::bytes(b"body-two");
         let ctx = WorkspaceCtx {
+            paths: &[],
             files: &files,
             manifests: &[],
             config: &config,
@@ -715,6 +727,7 @@ mod tests {
             .params
             .push(("other".to_owned(), "bool".to_owned()));
         let ctx = WorkspaceCtx {
+            paths: &[],
             files: &files,
             manifests: &[],
             config: &config,
