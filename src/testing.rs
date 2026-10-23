@@ -5,6 +5,84 @@ use ra_ap_syntax::{Edition, SourceFile};
 
 use crate::{AstCtx, Config, FileCtx, Fix, Path, TomlCtx, Violation};
 
+/// Parse Rust and Cargo manifest fixtures and expose every fixture path to a workspace rule.
+#[must_use]
+pub fn check_workspace_sources(
+    sources: &[(&str, &str)],
+    check: fn(&crate::WorkspaceCtx<'_>) -> Vec<Violation>,
+) -> Vec<Violation> {
+    check_workspace_sources_with_config(sources, &Config::generate_default(&[]), check)
+}
+
+/// Run a workspace fixture with explicit, already validated configuration.
+#[must_use]
+pub fn check_workspace_sources_with_config(
+    sources: &[(&str, &str)],
+    config: &Config,
+    check: fn(&crate::WorkspaceCtx<'_>) -> Vec<Violation>,
+) -> Vec<Violation> {
+    let mut files = Vec::new();
+    let mut manifests = Vec::new();
+    let mut paths = sources
+        .iter()
+        .map(|(rel, _)| (*rel).to_owned())
+        .collect::<Vec<_>>();
+
+    paths.sort();
+    paths.dedup();
+
+    for &(rel, contents) in sources {
+        let lines = contents.lines().collect::<Vec<_>>();
+        let file = FileCtx {
+            test_only: false,
+            rel,
+            path: Path::new(rel),
+            package_name: None,
+            package_publishable: None,
+            lines: &lines,
+            contents,
+            config,
+        };
+
+        if Path::new(rel)
+            .extension()
+            .is_some_and(|extension| extension == "rs")
+        {
+            let parse = SourceFile::parse(contents, Edition::Edition2024);
+            let mut errors = Vec::new();
+            let suppressions =
+                crate::infra::ignore::suppressed_lines(rel, &lines, &mut errors, None);
+
+            files.push(crate::languages::workspace::extract(
+                &file,
+                &parse.tree(),
+                suppressions,
+                false,
+            ));
+        } else if rel.ends_with("Cargo.toml") {
+            let parse = taplo::parser::parse(contents);
+            let dom = parse.clone().into_dom();
+
+            if let Some(manifest) = crate::languages::toml::workspace_manifest(&TomlCtx {
+                file: &file,
+                parse: &parse,
+                dom: &dom,
+            }) {
+                manifests.push(manifest);
+            }
+        }
+    }
+
+    files.sort_by(|a, b| a.rel.cmp(&b.rel));
+    manifests.sort_by(|a, b| a.rel.cmp(&b.rel));
+    check(&crate::WorkspaceCtx {
+        paths: &paths,
+        files: &files,
+        manifests: &manifests,
+        config,
+    })
+}
+
 fn package_name_from_path(rel: &str) -> Option<&str> {
     let components: Vec<&str> = rel.split('/').collect();
     let source = components
@@ -33,6 +111,7 @@ pub fn check_source_at(
     let config = Config::generate_default(&[]);
     let lines: Vec<&str> = source.lines().collect();
     let context = FileCtx {
+        test_only: false,
         rel,
         path: Path::new(rel),
         package_name: package_name_from_path(rel),
@@ -78,6 +157,7 @@ pub(crate) fn check_source_ast_at_with_publishability(
     let config = Config::generate_default(&[]);
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
+        test_only: false,
         rel,
         path: Path::new(rel),
         package_name: package_name_from_path(rel),
@@ -115,6 +195,7 @@ pub fn check_source_toml_at(
     let config = Config::generate_default(&[]);
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
+        test_only: false,
         rel,
         path: Path::new(rel),
         package_name: None,
@@ -172,6 +253,7 @@ pub fn apply_line_fixes(
     let config = Config::generate_default(&[]);
     let lines: Vec<&str> = source.lines().collect();
     let context = FileCtx {
+        test_only: false,
         rel: "test.rs",
         path: Path::new("test.rs"),
         package_name: None,
@@ -202,6 +284,7 @@ pub fn apply_ast_fixes(
     let config = Config::generate_default(&[]);
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
+        test_only: false,
         rel: "test.rs",
         path: Path::new("test.rs"),
         package_name: None,
@@ -238,6 +321,7 @@ pub fn apply_ast_tree_fix(
     let config = Config::generate_default(&[]);
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
+        test_only: false,
         rel: "test.rs",
         path: Path::new("test.rs"),
         package_name: None,
@@ -278,6 +362,7 @@ pub fn apply_toml_fixes_at(
     let config = Config::generate_default(&[]);
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
+        test_only: false,
         rel,
         path: Path::new(rel),
         package_name: None,

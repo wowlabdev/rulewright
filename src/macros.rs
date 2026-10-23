@@ -45,7 +45,7 @@ macro_rules! _declare_params {
         compile_error!(concat!(
             "unsupported Rulewright parameter declaration `",
             stringify!($($unsupported)*),
-            "`; supported types are `i64` and `[String]`"
+            "`; supported types are `i64`, `bool`, and `[String]`"
         ));
     };
 }
@@ -53,6 +53,12 @@ macro_rules! _declare_params {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _param {
+    ($pname:ident : bool = $default:expr) => {
+        $crate::RuleParam {
+            name: stringify!($pname), param_type: $crate::ParamType::Bool,
+            default: $crate::ParamDefault::Bool($default), allowed_values: &[],
+        }
+    };
     ($pname:ident : i64 = $default:expr) => {
         $crate::RuleParam {
             name: stringify!($pname),
@@ -81,7 +87,7 @@ macro_rules! _param {
         compile_error!(concat!(
             "unsupported Rulewright parameter type in `",
             stringify!($pname : $($unsupported)*),
-            "`; supported types are `i64` and `[String]`"
+            "`; supported types are `i64`, `bool`, and `[String]`"
         ))
     };
 }
@@ -247,8 +253,33 @@ macro_rules! pack_toml_rule {
     };
 }
 
+/// Declare a workspace rule in a downstream pack. Uses the exact supplied rule ID.
+/// Define `EXAMPLES` and `check_<name>(&WorkspaceCtx)` in the surrounding module.
 #[macro_export]
-#[doc(hidden)]
+macro_rules! pack_workspace_rule {
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, default = false, params { $($params:tt)* } $(,)?) => {
+        $crate::_declare_params!($name; $($params)*);
+        $crate::__paste::paste! {
+            $crate::_define_rule!(pack, $name, $crate::_rule_info_disabled!(stringify!($name), $desc, $just, $sev, [<$name:upper _PARAMS>]), Workspace, [<check_ $name>], None);
+        }
+    };
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, params { $($params:tt)* } $(,)?) => {
+        $crate::_declare_params!($name; $($params)*);
+        $crate::__paste::paste! {
+            $crate::_define_rule!(pack, $name, $crate::_rule_info!(stringify!($name), $desc, $just, $sev, [<$name:upper _PARAMS>]), Workspace, [<check_ $name>], None);
+        }
+    };
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, default = false $(,)?) => {
+        $crate::pack_workspace_rule!($name, $desc, $just, $sev, default = false, params {});
+    };
+    ($name:ident, $desc:expr, $just:expr, $sev:ident $(,)?) => {
+        $crate::pack_workspace_rule!($name, $desc, $just, $sev, params {});
+    };
+}
+
+/// Workspace fixture harness. `run(source)` supplies one Rust file; `run_files`
+/// accepts `(relative path, contents)` pairs including manifests and other files.
+#[macro_export]
 macro_rules! rulewright_workspace_test {
     ($check_fn:ident, { $($body:tt)* }) => {
         $crate::__paste::paste! {
@@ -256,7 +287,11 @@ macro_rules! rulewright_workspace_test {
             mod [<tests_ $check_fn>] {
                 use super::*;
                 fn run(source: &str) -> Vec<$crate::Violation> {
-                    $crate::check_workspace_sources(&[("test.rs", source)], $check_fn)
+                    $crate::testing::check_workspace_sources(&[("test.rs", source)], $check_fn)
+                }
+                #[allow(dead_code, reason = "fixtures may use only the single-file convenience helper")]
+                fn run_files(sources: &[(&str, &str)]) -> Vec<$crate::Violation> {
+                    $crate::testing::check_workspace_sources(sources, $check_fn)
                 }
                 $($body)*
             }
@@ -276,6 +311,7 @@ macro_rules! _rule_info {
             examples: EXAMPLES,
             params: $params,
             default_enabled: true,
+            needs_full_manifest_graph: false,
         }
     };
 }
@@ -292,6 +328,7 @@ macro_rules! _rule_info_disabled {
             examples: EXAMPLES,
             params: $params,
             default_enabled: false,
+            needs_full_manifest_graph: false,
         }
     };
 }
@@ -421,10 +458,17 @@ macro_rules! _submit_workspace_rule {
 #[doc(hidden)]
 macro_rules! _submit_language_workspace_rule {
     ($name:ident, $desc:expr, $just:expr, $sev:ident, $params:expr) => {
+        $crate::_submit_language_workspace_rule!($name, $desc, $just, $sev, $params, true, false);
+    };
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, $params:expr, $default:expr, $graph:expr) => {
         $crate::__paste::paste! {
             $crate::__inventory::submit! {
                 $crate::Rule {
-                    info: $crate::_rule_info!(stringify!($name), $desc, $just, $sev, $params),
+                    info: $crate::RuleInfo {
+                        default_enabled: $default,
+                        needs_full_manifest_graph: $graph,
+                        ..$crate::_rule_info!(stringify!($name), $desc, $just, $sev, $params)
+                    },
                     check: $crate::RuleCheck::Workspace([<check_ $name>]),
                     fix: None,
                 }
@@ -758,6 +802,15 @@ macro_rules! workspace_rule {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! language_workspace_rule {
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, default = false, full_manifest_graph = $graph:expr, params { $($params:tt)* } $(,)?) => {
+        $crate::_declare_params!($name; $($params)*);
+        $crate::__paste::paste! {
+            $crate::_submit_language_workspace_rule!($name, $desc, $just, $sev, [<$name:upper _PARAMS>], false, $graph);
+        }
+    };
+    ($name:ident, $desc:expr, $just:expr, $sev:ident, default = false, params { $($params:tt)* } $(,)?) => {
+        $crate::language_workspace_rule!($name, $desc, $just, $sev, default = false, full_manifest_graph = false, params { $($params)* });
+    };
     ($name:ident, $desc:expr, $just:expr, $sev:ident, params { $($params:tt)* } $(,)?) => {
         $crate::_declare_params!($name; $($params)*);
         $crate::__paste::paste! {

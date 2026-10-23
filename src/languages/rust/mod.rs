@@ -23,7 +23,6 @@ use crate::{
     FileCtx, Rule, RuleCheck, RuleFix, Violation,
     infra::{ignore, scanner},
     languages::Analysis,
-    matches_ignore,
 };
 
 const DIRECTIVE_RULE: &str = "rust_rulewright_directives";
@@ -175,6 +174,10 @@ pub(crate) fn analyze(
     fix_mode: bool,
     file_kind: FileKind,
 ) -> Analysis {
+    let file = &FileCtx {
+        test_only: file_kind.is_test_only(),
+        ..*file
+    };
     let mut analysis = Analysis::default();
     let mut ignore_errors = Vec::new();
     let ra_parse = SourceFile::parse(file.contents, Edition::Edition2024);
@@ -189,6 +192,7 @@ pub(crate) fn analyze(
         )
     };
     let line_file = FileCtx {
+        test_only: test_only_file,
         rel: file.rel,
         path: file.path,
         package_name: file.package_name,
@@ -206,7 +210,7 @@ pub(crate) fn analyze(
     );
     let report_directive_errors = !file.config.allows_suppressions()
         || rules.iter().any(|rule| rule.info.name == DIRECTIVE_RULE)
-            && !matches_ignore(file.rel, file.config.ignore_patterns(DIRECTIVE_RULE));
+            && file.config.applies_to(DIRECTIVE_RULE, file.rel);
 
     if report_directive_errors {
         analysis.violations.extend(
@@ -341,6 +345,7 @@ pub(crate) fn audit_suppressions(
     let visible_lines = line_rule_view(file.lines, &root, file.contents, file.rel);
     let directive_lines = scanner::directive_source_lines(file.contents, file.lines);
     let audit_file = FileCtx {
+        test_only: false,
         rel: file.rel,
         path: file.path,
         package_name: file.package_name,
@@ -394,6 +399,7 @@ pub(crate) fn audit_workspace_suppressions(
     config: &crate::Config,
 ) -> Vec<Violation> {
     let ctx = crate::languages::workspace::WorkspaceCtx {
+        paths: &[],
         files,
         manifests: &[],
         config,
@@ -531,7 +537,7 @@ fn cfg_requires_test(predicate: &ast::CfgPredicate) -> bool {
 }
 
 fn is_suppressed(file: &FileCtx<'_>, rule: &Rule, suppressed: &ignore::Suppressions) -> bool {
-    matches_ignore(file.rel, file.config.ignore_patterns(rule.info.name))
+    !file.config.applies_to(rule.info.name, file.rel)
         || ignore::is_file_suppressed(suppressed, rule.info.name)
 }
 
@@ -591,6 +597,7 @@ mod tests {
         let config = Config::generate_default(&registered_meta);
         let lines: Vec<&str> = source.lines().collect();
         let file = FileCtx {
+            test_only: false,
             rel: "adapter.rs",
             path: Path::new("adapter.rs"),
             package_name: None,
@@ -733,6 +740,7 @@ mod tests {
         let config = Config::generate_default(&[]);
         let lines: Vec<&str> = source.lines().collect();
         let file = FileCtx {
+            test_only: false,
             rel: "fixture_regions.rs",
             path: Path::new("fixture_regions.rs"),
             package_name: None,
@@ -772,6 +780,7 @@ mod tests {
         let config = Config::generate_default(&[]);
         let lines: Vec<&str> = source.lines().collect();
         let file = FileCtx {
+            test_only: false,
             rel: "production.rs",
             path: Path::new("production.rs"),
             package_name: None,
@@ -808,6 +817,7 @@ mod tests {
         );
         let lines: Vec<&str> = source.lines().collect();
         let file = FileCtx {
+            test_only: false,
             rel: "fixture.rs",
             path: Path::new("fixture.rs"),
             package_name: None,
@@ -846,6 +856,7 @@ mod tests {
             .push("ignored/**".to_owned());
         let lines: Vec<&str> = source.lines().collect();
         let file = FileCtx {
+            test_only: false,
             rel: "ignored/fixture.rs",
             path: Path::new("ignored/fixture.rs"),
             package_name: None,

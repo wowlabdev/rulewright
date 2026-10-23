@@ -86,6 +86,9 @@ struct Args {
     /// Ignore findings already recorded in this baseline file.
     #[arg(long, global = true, value_name = "PATH")]
     baseline: Option<std::path::PathBuf>,
+    /// Reject a baseline containing any of these comma-separated rule IDs.
+    #[arg(long, global = true, value_delimiter = ',')]
+    baseline_forbid: Vec<String>,
     /// Record the current findings as an adoption baseline.
     #[arg(
         long,
@@ -142,6 +145,12 @@ pub fn run_with_registry(registry: &RuleRegistry) -> ExitCode {
 }
 
 fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
+    if !args.baseline_forbid.is_empty() && args.baseline.is_none() {
+        output::error("--baseline-forbid requires --baseline");
+
+        return ExitCode::FAILURE;
+    }
+
     if let Some(error) = incompatible_analysis_options(args) {
         output::error(error);
 
@@ -150,6 +159,12 @@ fn run_args(args: &Args, registry: &RuleRegistry) -> ExitCode {
 
     if let Some(name) = unknown_rule_filter(registry, &args.rule) {
         output::error(&format!("unknown rule: {name}"));
+
+        return ExitCode::FAILURE;
+    }
+
+    if let Some(name) = unknown_rule_filter(registry, &args.baseline_forbid) {
+        output::error(&format!("unknown baseline-forbid rule: {name}"));
 
         return ExitCode::FAILURE;
     }
@@ -285,6 +300,7 @@ fn analysis_failed(
         report_format,
         baseline_path.as_deref(),
         write_baseline_path.as_deref(),
+        &args.baseline_forbid,
     );
 
     if args.ci {
@@ -533,6 +549,13 @@ fn load_and_validate_config(
         ExitCode::FAILURE
     })?;
     let metadata = rule_metadata(registry);
+    let optional = registry
+        .metadata()
+        .into_iter()
+        .filter(|rule| !rule.default_enabled)
+        .collect::<Vec<_>>();
+
+    config.backfill_registry_defaults(&optional);
     let (errors, warnings) = config.validate(&metadata);
 
     for warning in &warnings {
@@ -680,10 +703,12 @@ fn print_rule_detail(registry: &RuleRegistry, name: &str) -> ExitCode {
     for parameter in rule.params {
         let kind = match parameter.param_type {
             crate::ParamType::Int => "i64",
+            crate::ParamType::Bool => "bool",
             crate::ParamType::StringArray => "[String]",
         };
         let default = match &parameter.default {
             ParamDefault::Int(value) => value.to_string(),
+            ParamDefault::Bool(value) => value.to_string(),
             ParamDefault::StringArray(values) => format!("{values:?}"),
         };
 

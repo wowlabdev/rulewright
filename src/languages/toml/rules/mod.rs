@@ -2,5 +2,5 @@
 
 mod ambiguous_unicode;
 mod bidirectional_unicode;
-mod cargo;
+pub(crate) mod cargo;
 mod validity;

@@ -216,7 +216,9 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | toml_cargo_edition                 | medium   | toml           | yes     | no      | Require the workspace and non-inheriting members to target at least the configured Rust edition, with the matching virtual-workspace resolver.                                  |
 | toml_cargo_feature_names           | low      | toml           | yes     | no      | Flag Cargo feature names with use-/with- prefixes or -support suffixes.                                                                                                         |
 | toml_cargo_feature_no_std          | medium   | toml           | yes     | no      | Ban subtractive no-std Cargo features; provide an additive std feature instead.                                                                                                 |
+| toml_cargo_layers                  | high     | workspace      | yes     | no      | Reject dependency edges configured as manifest-glob !> package-glob,package-glob.                                                                                               |
 | toml_cargo_msrv                    | low      | toml           | yes     | no      | Require the workspace to declare rust-version and members to inherit it instead of overriding it.                                                                               |
+| toml_cargo_path_deps               | high     | workspace      | yes     | no      | Restrict path dependency declarations and patches to approved manifests and workspace-local paths.                                                                              |
 | toml_cargo_unused_deps             | medium   | workspace      | yes     | no      | Flag workspace-member dependencies that are never referenced by any Rust compile target.                                                                                        |
 | toml_cargo_workspace_dep_features  | low      | toml           | yes     | no      | Flag [workspace.dependencies] entries that enable features outside the allowlist.                                                                                               |
 | toml_cargo_workspace_lints         | medium   | toml           | yes     | no      | Require the workspace to enable the standard rust/clippy lint set and members to inherit it via `[lints] workspace = true`.                                                     |
@@ -12623,6 +12625,29 @@ name = "foo"
 
 ```
 
+### toml_cargo_layers
+
+Reject dependency edges configured as manifest-glob !> package-glob,package-glob.
+
+> Explicit dependency boundaries prevent accidental coupling between workspace layers. Configure the boundaries appropriate to your project; no package names are reserved.
+
+|              |                        |
+| ------------ | ---------------------- |
+| Severity     | high                   |
+| Type         | workspace              |
+| Enabled      | yes                    |
+| Fixable      | no                     |
+| Param: rules | [String], default = [] |
+
+**Good (passes):**
+
+_unrestricted dependency_
+
+```rust
+[dependencies]
+serde = "1"
+```
+
 ### toml_cargo_msrv
 
 Require the workspace to declare rust-version and members to inherit it instead of overriding it.
@@ -12687,6 +12712,40 @@ _member inherits MSRV_
 name = "foo"
 rust-version.workspace = true
 
+```
+
+### toml_cargo_path_deps
+
+Restrict path dependency declarations and patches to approved manifests and workspace-local paths.
+
+> Centralizing path declarations makes local dependency sources reviewable. Rejecting paths outside the workspace prevents builds from silently depending on sibling checkouts.
+
+|                                |                                    |
+| ------------------------------ | ---------------------------------- |
+| Severity                       | high                               |
+| Type                           | workspace                          |
+| Enabled                        | yes                                |
+| Fixable                        | no                                 |
+| Param: allow_in                | [String], default = ["Cargo.toml"] |
+| Param: allow_outside_workspace | bool, default = false              |
+| Param: allow_patch             | bool, default = false              |
+
+**Bad (triggers violation):**
+
+_outside path_
+
+```rust
+[dependencies]
+other = { path = "../other" }
+```
+
+**Good (passes):**
+
+_registry dependency_
+
+```rust
+[dependencies]
+serde = "1"
 ```
 
 ### toml_cargo_unused_deps

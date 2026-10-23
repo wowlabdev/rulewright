@@ -60,6 +60,7 @@ fn check_cyclomatic_complexity(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let threshold = ctx.file.config.get_usize(
         "rust_cyclomatic_complexity",
         &CYCLOMATIC_COMPLEXITY_PARAMS[0],
+        ctx.file.rel,
     );
 
     ctx.nodes::<ast::Fn>()

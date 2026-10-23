@@ -63,9 +63,11 @@ crate::line_rule!(
 
 fn check_expect_over_allow(ctx: &FileCtx<'_>) -> Vec<Violation> {
     let mut out = Vec::new();
-    let allowed_lints = ctx
-        .config
-        .get_str_array("rust_expect_over_allow", &EXPECT_OVER_ALLOW_PARAMS[0]);
+    let allowed_lints = ctx.config.get_str_array(
+        "rust_expect_over_allow",
+        &EXPECT_OVER_ALLOW_PARAMS[0],
+        ctx.rel,
+    );
     let mut in_macro = false;
     let mut brace_depth: usize = 0;
     let mut seen_brace = false;

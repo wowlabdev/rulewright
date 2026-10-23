@@ -321,6 +321,7 @@ fn audit_path(
     let lines: Vec<&str> = contents.lines().collect();
     let package = super::package_for_path(ctx.packages, path);
     let file = FileCtx {
+        test_only: false,
         rel: &rel,
         path,
         package_name: package.map(|package| package.name.as_str()),
@@ -403,7 +404,7 @@ fn plan_file(
             .unwrap_or("");
         let budget_active = entry.values.contains_key("rust_too_many_lines_in_file")
             && lines.iter().filter(|line| !line.trim().is_empty()).count()
-                > file_size_threshold(ctx.config, rules);
+                > file_size_threshold(ctx.config, rules, &rel);
         let Ok(planned) = plan_entry(
             &entry,
             &raw_violations,
@@ -531,14 +532,14 @@ fn plan_entry(
     Ok(Some((fix, stale)))
 }
 
-fn file_size_threshold(config: &crate::Config, rules: &[&Rule]) -> usize {
+fn file_size_threshold(config: &crate::Config, rules: &[&Rule], rel: &str) -> usize {
     let parameter = rules
         .iter()
         .find(|rule| rule.info.name == "rust_too_many_lines_in_file")
         .and_then(|rule| rule.info.params.first());
 
     parameter.map_or(DEFAULT_FILE_SIZE_THRESHOLD, |param| {
-        config.get_usize("rust_too_many_lines_in_file", param)
+        config.get_usize("rust_too_many_lines_in_file", param, rel)
     })
 }
 

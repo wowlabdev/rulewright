@@ -8,7 +8,7 @@ rulewright::pack_line_rule!(
     "Exercises the parameter diagnostic.",
     Low,
     params {
-        enabled: bool = true
+        enabled: f64 = 1.5
     },
 );
 

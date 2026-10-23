@@ -23,6 +23,7 @@ fn analyze_selected_with_config(
 ) -> Analysis {
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
+        test_only: false,
         rel: "dispatch.rs",
         path: Path::new("dispatch.rs"),
         package_name: None,
@@ -211,6 +212,7 @@ fn production() {}
     let config = Config::generate_default(&[]);
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
+        test_only: false,
         rel: "classification.rs",
         path: Path::new("classification.rs"),
         package_name: None,

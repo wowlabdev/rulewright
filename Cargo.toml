@@ -1,6 +1,6 @@
 [package]
 name = "rulewright"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Executable engineering standards for Rust workspaces"
@@ -18,6 +18,7 @@ include = [
     "/Cargo.lock",
     "/LICENSE",
     "/README.md",
+    "/CHANGELOG.md",
     "/RULES.md",
     "/.github/workflows/*.yml",
     "/scripts/**",

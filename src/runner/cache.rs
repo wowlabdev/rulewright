@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-const CACHE_SCHEMA: u32 = 3;
+const CACHE_SCHEMA: u32 = 4;
 const BASE_DOMAIN: &[u8] = b"rulewright:analysis-base:v1";
 const RUST_CONTEXT_DOMAIN: &[u8] = b"rulewright:rust-context:v1";
 const TOML_CONTEXT_DOMAIN: &[u8] = b"rulewright:toml-context:v1";
@@ -36,6 +36,7 @@ pub(super) struct Session {
     fast_path: PathBuf,
     workspace_path: PathBuf,
     base: Checksum,
+    pub(super) policy_changed: bool,
     tree_checksum: Checksum,
     rust_context: Checksum,
     toml_context: Checksum,
@@ -47,12 +48,19 @@ pub(super) struct Session {
 
 impl Session {
     pub(super) fn open(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Self> {
-        let source_paths =
-            crate::infra::walk::source_paths(ctx.workspace_root, &[], &["rs", "toml"]).ok()?;
-        let snapshot = TreeSnapshot::capture(ctx.workspace_root, &source_paths).ok()?;
+        let source_paths = crate::infra::walk::source_paths(ctx.workspace_root, &[], &[]).ok()?;
+        let snapshot = TreeSnapshot::capture(
+            ctx.workspace_root,
+            source_paths.iter().filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "rs" || extension == "toml")
+            }),
+        )
+        .ok()?;
         let base = base_checksum(ctx, rules)?;
         let rust_context = rust_context_checksum(&snapshot)?;
-        let toml_context = toml_context_checksum(ctx.root, &snapshot)?;
+        let inventory = inventory_checksum(ctx.workspace_root, &source_paths)?;
+        let toml_context = toml_context_checksum(ctx.root, &snapshot, inventory)?;
         let file_checksums = snapshot
             .entries()
             .iter()
@@ -63,8 +71,9 @@ impl Session {
                 )
             })
             .collect();
-        let cache_dir =
-            super::cargo_target_dir(ctx.root, ctx.workspace_root).join("rulewright-cache");
+        let cache_dir = super::cargo_target_dir(ctx.root, ctx.workspace_root)
+            .join("rulewright-cache")
+            .join(checksum::bytes(ctx.workspace_root.as_os_str().as_encoded_bytes()).to_string());
 
         directory::ensure(&cache_dir).ok()?;
 
@@ -73,7 +82,15 @@ impl Session {
         let fast_path = cache_dir.join("complete.bin");
         let workspace_path = cache_dir.join("workspace.bin");
         let lock = Lock::try_acquire(&lock_path).ok()?;
-        let tree_checksum = snapshot.checksum();
+        let tree_checksum = checksum::bytes(
+            [
+                snapshot.checksum().as_bytes().as_slice(),
+                inventory.as_bytes(),
+            ]
+            .concat(),
+        );
+        let policy_changed = read_binary::<CompleteDocument>(&fast_path)
+            .is_some_and(|document| document.base != base);
         let complete = read_binary::<CompleteDocument>(&fast_path)
             .filter(|document| {
                 document.schema == CACHE_SCHEMA
@@ -103,6 +120,7 @@ impl Session {
             fast_path,
             workspace_path,
             base,
+            policy_changed,
             tree_checksum,
             rust_context,
             toml_context,
@@ -426,12 +444,18 @@ fn base_checksum(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Checksum> 
         append_part(&mut encoded, rule.info.severity.as_str().as_bytes())?;
         append_part(&mut encoded, rule.check.kind().as_str().as_bytes())?;
         append_part(&mut encoded, &[u8::from(rule.fix.is_some())])?;
+        append_part(
+            &mut encoded,
+            &[u8::from(rule.info.needs_full_manifest_graph)],
+        )?;
 
         for parameter in rule.info.params {
             append_part(&mut encoded, parameter.name.as_bytes())?;
             append_part(&mut encoded, parameter.param_type.as_str().as_bytes())?;
 
             match &parameter.default {
+                crate::ParamDefault::Bool(value) => append_part(&mut encoded, &[u8::from(*value)])?,
+
                 crate::ParamDefault::Int(value) => {
                     append_part(&mut encoded, &value.to_le_bytes())?;
                 }
@@ -443,6 +467,11 @@ fn base_checksum(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Checksum> 
                 }
             }
         }
+    }
+
+    for manifest in crate::infra::walk::source_paths(ctx.workspace_root, &[], &["toml"]).ok()? {
+        append_part(&mut encoded, manifest.to_str()?.as_bytes())?;
+        append_part(&mut encoded, checksum::file(&manifest).ok()?.as_bytes())?;
     }
 
     Some(checksum::bytes(encoded))
@@ -554,11 +583,36 @@ fn rust_context_checksum(snapshot: &TreeSnapshot) -> Option<Checksum> {
     Some(checksum::bytes(encoded))
 }
 
-fn toml_context_checksum(root: &Path, snapshot: &TreeSnapshot) -> Option<Checksum> {
+fn inventory_checksum(root: &Path, paths: &[PathBuf]) -> Option<Checksum> {
+    let mut encoded = Vec::new();
+
+    for path in paths {
+        append_part(&mut encoded, relative_string(path, root)?.as_bytes())?;
+    }
+
+    Some(checksum::bytes(encoded))
+}
+
+fn toml_context_checksum(
+    root: &Path,
+    snapshot: &TreeSnapshot,
+    inventory: Checksum,
+) -> Option<Checksum> {
     let mut encoded = Vec::new();
 
     append_part(&mut encoded, TOML_CONTEXT_DOMAIN)?;
-    append_part(&mut encoded, snapshot.checksum().as_bytes())?;
+    append_part(&mut encoded, inventory.as_bytes())?;
+
+    for entry in snapshot.entries() {
+        if entry
+            .relative_path()
+            .file_name()
+            .is_some_and(|name| name == "Cargo.toml")
+        {
+            append_part(&mut encoded, entry.relative_path().to_str()?.as_bytes())?;
+            append_part(&mut encoded, entry.checksum().as_bytes())?;
+        }
+    }
 
     let cargo_config = root.join(".cargo/config.toml");
 
@@ -597,6 +651,38 @@ mod tests {
         infra::ignore::Suppressions,
         languages::workspace::{FunctionRecord, ShingleFingerprint},
     };
+
+    #[gtest]
+    fn toml_context_ignores_content_outside_cargo_manifests() -> Result<()> {
+        let temp = temporary::Directory::new().or_fail()?;
+        let root = temp.path();
+        let paths = ["Cargo.toml", "README.md", "data.bin", "lib.rs"].map(|name| root.join(name));
+
+        for path in &paths {
+            file::write_text(path, "initial").or_fail()?;
+        }
+
+        let capture = || {
+            let snapshot = TreeSnapshot::capture(root, &paths).unwrap();
+
+            toml_context_checksum(root, &snapshot, inventory_checksum(root, &paths).unwrap())
+                .unwrap()
+        };
+        let initial = capture();
+
+        for path in &paths[1..] {
+            file::write_text(path, "changed content").or_fail()?;
+            verify_eq!(capture(), initial)?;
+        }
+
+        file::write_text(&paths[0], "changed manifest").or_fail()?;
+        verify_that!(capture(), not(eq(initial)))?;
+        verify_that!(
+            inventory_checksum(root, &paths[..3]),
+            not(eq(inventory_checksum(root, &paths)))
+        )?;
+        Ok(())
+    }
 
     #[gtest]
     fn binary_cache_rejects_trailing_or_corrupt_data() -> Result<()> {
@@ -692,6 +778,7 @@ mod tests {
             },
         }];
         let ctx = WorkspaceCtx {
+            paths: &[],
             files: &files,
             manifests: &[],
             config: &config,
@@ -701,6 +788,7 @@ mod tests {
 
         files[0].functions[0].body_checksum = checksum::bytes(b"body-two");
         let ctx = WorkspaceCtx {
+            paths: &[],
             files: &files,
             manifests: &[],
             config: &config,
@@ -715,6 +803,7 @@ mod tests {
             .params
             .push(("other".to_owned(), "bool".to_owned()));
         let ctx = WorkspaceCtx {
+            paths: &[],
             files: &files,
             manifests: &[],
             config: &config,

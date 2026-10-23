@@ -6,6 +6,54 @@ use common::{command, initialize, root_package, run, text, write};
 use rulewright::RuleRegistry;
 
 #[test]
+fn strict_accepts_absent_default_off_rules_but_still_checks_their_params() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+
+    root_package(root, "optional-rules", "pub fn clean() {}\n");
+    initialize(root);
+    let path = root.join("rulewright.toml");
+    let mut config: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    let registry = RuleRegistry::with_builtins().unwrap();
+
+    for name in ["toml_cargo_layers", "toml_cargo_path_deps"] {
+        assert!(
+            !registry
+                .metadata()
+                .iter()
+                .find(|rule| rule.name == name)
+                .unwrap()
+                .default_enabled
+        );
+    }
+
+    for rule in registry
+        .metadata()
+        .iter()
+        .filter(|rule| !rule.default_enabled)
+    {
+        config["rules"].as_table_mut().unwrap().remove(rule.name);
+    }
+
+    write(&path, &toml::to_string(&config).unwrap());
+    let output = run(root, &["--strict", "--parse-config", "rulewright.toml"]);
+
+    assert!(output.status.success(), "{}", text(&output));
+    config["rules"].as_table_mut().unwrap().insert(
+        "toml_cargo_path_deps".to_owned(),
+        toml::Value::Table(toml::map::Map::from_iter([
+            ("enabled".to_owned(), toml::Value::Boolean(false)),
+            ("typo".to_owned(), toml::Value::Boolean(true)),
+        ])),
+    );
+    write(&path, &toml::to_string(&config).unwrap());
+    let output = run(root, &["--strict", "--parse-config", "rulewright.toml"]);
+
+    assert!(!output.status.success());
+    assert!(text(&output).contains("unknown param `typo`"));
+}
+
+#[test]
 fn generated_config_matches_registry_defaults() {
     let temporary = tempfile::tempdir().expect("temporary project should be created");
     let root = temporary.path();
@@ -320,7 +368,23 @@ fn dirty_mode_analyzes_only_changed_sources_in_a_disposable_repository() {
     }
 
     write(&root.join("src/lib.rs"), "pub fn changed() { dbg!(2); }\n");
-    let output = run(root, &["--rule", "rust_dbg", "--dirty"]);
+    let shared_target = tempfile::tempdir().unwrap();
+    let other = tempfile::tempdir().unwrap();
+
+    root_package(other.path(), "other-workspace", "pub fn clean() {}\n");
+    initialize(other.path());
+    let warm = command(other.path())
+        .env("CARGO_TARGET_DIR", shared_target.path())
+        .args(["--rule", "rust_dbg"])
+        .output()
+        .unwrap();
+
+    assert!(warm.status.success(), "{}", text(&warm));
+    let output = command(root)
+        .env("CARGO_TARGET_DIR", shared_target.path())
+        .args(["--rule", "rust_dbg", "--dirty"])
+        .output()
+        .unwrap();
     let output_text = text(&output);
 
     assert!(!output.status.success());

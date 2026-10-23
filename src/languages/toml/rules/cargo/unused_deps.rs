@@ -22,15 +22,20 @@ crate::language_workspace_rule!(
 );
 
 fn check_toml_cargo_unused_deps(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
-    let always_used: HashSet<String> = ctx
-        .config
-        .get_str_array("toml_cargo_unused_deps", &TOML_CARGO_UNUSED_DEPS_PARAMS[0])
-        .into_iter()
-        .map(|name| name.replace('-', "_"))
-        .collect();
     let mut violations = Vec::new();
 
     for manifest in ctx.manifests {
+        let always_used: HashSet<String> = ctx
+            .config
+            .get_str_array(
+                "toml_cargo_unused_deps",
+                &TOML_CARGO_UNUSED_DEPS_PARAMS[0],
+                &manifest.rel,
+            )
+            .into_iter()
+            .map(|name| name.replace('-', "_"))
+            .collect();
+
         if matches_ignore(
             &manifest.rel,
             ctx.config.ignore_patterns("toml_cargo_unused_deps"),

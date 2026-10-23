@@ -9,6 +9,8 @@ use crate::{Config, FileCtx, infra::ignore::Suppressions};
 
 #[derive(Debug)]
 pub struct WorkspaceCtx<'a> {
+    /// Sorted workspace-relative inventory of all walked files, including other languages.
+    pub paths: &'a [String],
     pub files: &'a [WorkspaceRustFile],
     pub manifests: &'a [WorkspaceManifest],
     pub config: &'a Config,
@@ -27,6 +29,12 @@ pub struct WorkspaceRustFile {
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct WorkspaceManifest {
     pub rel: String,
+    /// Package identity, absent for virtual workspace manifests.
+    pub package_name: Option<String>,
+    /// Registry or Git source keys and their patch dependency declarations.
+    pub patch_tables: std::collections::BTreeMap<String, Vec<DependencyRecord>>,
+    /// Shared dependency declarations from `[workspace.dependencies]`.
+    pub workspace_dependencies: Vec<DependencyRecord>,
     pub dependencies: Vec<DependencyRecord>,
 }
 
@@ -35,6 +43,29 @@ pub struct DependencyRecord {
     pub name: String,
     pub root: String,
     pub line: usize,
+    /// Cargo dependency section, including target-specific declarations.
+    pub section: DependencySection,
+    /// Source as declared; inherited entries retain `Workspace`.
+    pub source: DependencySource,
+    /// Explicit renamed package identity, if supplied.
+    pub package: Option<String>,
+}
+
+/// Cargo dependency kind, independent of its target condition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+pub enum DependencySection {
+    Normal,
+    Dev,
+    Build,
+}
+
+/// Source declared by a Cargo dependency or patch entry.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+pub enum DependencySource {
+    Registry,
+    Path(String),
+    Git,
+    Workspace,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]

@@ -107,6 +107,7 @@ fn check_pub_api_foreign_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let allowed = ctx.file.config.get_str_array(
         "rust_pub_api_foreign_types",
         &PUB_API_FOREIGN_TYPES_PARAMS[0],
+        ctx.file.rel,
     );
     let mut external = match ctx
         .file
@@ -119,6 +120,7 @@ fn check_pub_api_foreign_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
         None => ctx.file.config.get_str_array(
             "rust_pub_api_foreign_types",
             &PUB_API_FOREIGN_TYPES_PARAMS[1],
+            ctx.file.rel,
         ),
     };
 

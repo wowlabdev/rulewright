@@ -27,15 +27,6 @@ pub(crate) fn check_source_ast_publishability(
     )
 }
 
-pub(crate) fn check_workspace_sources(
-    sources: &[(&str, &str)],
-    check: fn(&crate::languages::workspace::WorkspaceCtx<'_>) -> Vec<Violation>,
-) -> Vec<Violation> {
-    let config = test_config();
-
-    check_workspace_sources_with_config(sources, &config, check)
-}
-
 pub(crate) fn check_workspace_sources_with_ignore(
     sources: &[(&str, &str)],
     rule: &str,
@@ -47,6 +38,8 @@ pub(crate) fn check_workspace_sources_with_ignore(
     config.rules.insert(
         rule.to_owned(),
         RuleConfig {
+            only: Vec::new(),
+            overrides: Vec::new(),
             enabled: true,
             ignore: ignore.iter().map(|pattern| (*pattern).to_owned()).collect(),
             params: BTreeMap::new(),
@@ -66,6 +59,7 @@ fn check_workspace_sources_with_config(
     for (rel, source) in sources {
         let lines: Vec<&str> = source.lines().collect();
         let file = FileCtx {
+            test_only: false,
             rel,
             path: Path::new(rel),
             package_name: None,
@@ -90,6 +84,7 @@ fn check_workspace_sources_with_config(
     }
 
     check(&crate::languages::workspace::WorkspaceCtx {
+        paths: &[],
         files: &files,
         manifests: &[],
         config,
@@ -106,6 +101,7 @@ pub(crate) fn check_workspace_member(
     let rel = format!("{member_dir}/src/lib.rs");
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
+        test_only: false,
         rel: &rel,
         path: Path::new(&rel),
         package_name: None,
@@ -128,12 +124,18 @@ pub(crate) fn check_workspace_member(
         false,
     )];
     let manifests = [crate::languages::workspace::WorkspaceManifest {
+        package_name: Some("example".to_owned()),
+        patch_tables: BTreeMap::default(),
+        workspace_dependencies: Vec::new(),
         rel: format!("{member_dir}/Cargo.toml"),
         dependencies: dependencies
             .iter()
             .enumerate()
             .map(
                 |(index, (name, root))| crate::languages::workspace::DependencyRecord {
+                    section: crate::DependencySection::Normal,
+                    source: crate::DependencySource::Registry,
+                    package: None,
                     name: (*name).to_owned(),
                     root: root.replace('-', "_"),
                     line: index + 1,
@@ -143,6 +145,7 @@ pub(crate) fn check_workspace_member(
     }];
 
     check(&crate::languages::workspace::WorkspaceCtx {
+        paths: &[],
         files: &files,
         manifests: &manifests,
         config: &config,
@@ -162,6 +165,7 @@ pub(crate) fn check_source_params(
     let cfg = config_with_string_params(rule, params);
     let lines: Vec<&str> = source.lines().collect();
     let ctx = FileCtx {
+        test_only: false,
         rel: "test.rs",
         path: Path::new("test.rs"),
         package_name: None,
@@ -188,6 +192,7 @@ pub(crate) fn check_source_ast_params(
     let cfg = config_with_string_params(rule, params);
     let lines: Vec<&str> = source.lines().collect();
     let file_ctx = FileCtx {
+        test_only: false,
         rel: "test.rs",
         path: Path::new("test.rs"),
         package_name: None,
@@ -225,6 +230,8 @@ fn config_with_string_params(rule: &str, params: &[(&str, &[&str])]) -> Config {
     cfg.rules.insert(
         rule.to_owned(),
         RuleConfig {
+            only: Vec::new(),
+            overrides: Vec::new(),
             enabled: true,
             ignore: Vec::new(),
             params: param_map,

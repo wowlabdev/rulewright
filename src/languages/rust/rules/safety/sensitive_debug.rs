@@ -121,21 +121,27 @@ fn check_sensitive_debug(ctx: &AstCtx<'_>) -> Vec<Violation> {
 }
 
 fn redacted_types(ctx: &AstCtx<'_>) -> Vec<String> {
-    ctx.file
-        .config
-        .get_str_array("rust_sensitive_debug", &SENSITIVE_DEBUG_PARAMS[2])
+    ctx.file.config.get_str_array(
+        "rust_sensitive_debug",
+        &SENSITIVE_DEBUG_PARAMS[2],
+        ctx.file.rel,
+    )
 }
 
 fn allowed_fields(ctx: &AstCtx<'_>) -> Vec<String> {
-    ctx.file
-        .config
-        .get_str_array("rust_sensitive_debug", &SENSITIVE_DEBUG_PARAMS[1])
+    ctx.file.config.get_str_array(
+        "rust_sensitive_debug",
+        &SENSITIVE_DEBUG_PARAMS[1],
+        ctx.file.rel,
+    )
 }
 
 fn sensitive_markers(ctx: &AstCtx<'_>) -> Vec<String> {
-    ctx.file
-        .config
-        .get_str_array("rust_sensitive_debug", &SENSITIVE_DEBUG_PARAMS[0])
+    ctx.file.config.get_str_array(
+        "rust_sensitive_debug",
+        &SENSITIVE_DEBUG_PARAMS[0],
+        ctx.file.rel,
+    )
 }
 
 fn is_sensitive_field(name: &str, markers: &[String]) -> bool {

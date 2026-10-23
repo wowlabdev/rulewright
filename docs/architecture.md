@@ -24,3 +24,11 @@ Rule packs are ordinary, statically linked Rust code. There is no dynamic-librar
 - Rust workspace and language-neutral workspace rules receive `WorkspaceCtx` records.
 
 Downstream rules participate in configuration generation and validation, catalog/detail/LLM rendering, ignores, suppressions, caching, dry runs, and fixes through the same registry dispatch as built-ins.
+
+The complete cache snapshots all walked paths, so adding, renaming, or deleting
+a foreign-language file invalidates inventory-based rules. Configuration,
+pack fingerprints, and TOML policy inputs contribute to the analysis base key;
+Rust source and manifest changes invalidate module-graph classification.
+`--dirty` widens to a full report when cached policy inputs change or changed
+TOML files are selected. Ordinary source edits retain the existing dirty-file
+filter, while workspace findings always use complete input records.

@@ -1,4 +1,4 @@
-error: unsupported Rulewright parameter type in `enabled : bool = true`; supported types are `i64` and `[String]`
+error: unsupported Rulewright parameter type in `enabled : f64 = 1.5`; supported types are `i64`, `bool`, and `[String]`
   --> tests/ui/unsupported_param_type.rs:5:1
    |
  5 | / rulewright::pack_line_rule!(

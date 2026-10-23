@@ -57,10 +57,12 @@ fn check_unbalanced_crate_root(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let max_root_items = ctx.file.config.get_usize(
         "rust_unbalanced_crate_root",
         &UNBALANCED_CRATE_ROOT_PARAMS[0],
+        ctx.file.rel,
     );
     let min_modules = ctx.file.config.get_usize(
         "rust_unbalanced_crate_root",
         &UNBALANCED_CRATE_ROOT_PARAMS[1],
+        ctx.file.rel,
     );
     let mut pub_items = 0usize;
     let mut pub_mods = 0usize;

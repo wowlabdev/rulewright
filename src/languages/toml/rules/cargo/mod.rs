@@ -3,7 +3,9 @@
 mod edition;
 mod feature_names;
 mod feature_no_std;
+pub(crate) mod layers;
 mod msrv;
+mod path_deps;
 mod unused_deps;
 mod workspace_dep_features;
 mod workspace_lints;

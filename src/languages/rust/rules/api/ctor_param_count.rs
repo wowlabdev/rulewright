@@ -73,10 +73,11 @@ crate::ast_rule!(
 );
 
 fn check_ctor_param_count(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let threshold = ctx
-        .file
-        .config
-        .get_usize("rust_ctor_param_count", &CTOR_PARAM_COUNT_PARAMS[0]);
+    let threshold = ctx.file.config.get_usize(
+        "rust_ctor_param_count",
+        &CTOR_PARAM_COUNT_PARAMS[0],
+        ctx.file.rel,
+    );
 
     ctx.nodes::<ast::Impl>()
         .filter(|item| !ctx.is_in_test(item) && item.trait_().is_none())

@@ -6,6 +6,8 @@
 mod baseline;
 mod cache;
 mod clean;
+#[cfg(test)]
+mod regression_tests;
 mod report;
 
 use std::collections::{BTreeMap, HashSet};
@@ -167,6 +169,7 @@ pub fn run(
     format: ReportFormat,
     baseline_path: Option<&Path>,
     write_baseline_path: Option<&Path>,
+    baseline_forbid: &[String],
 ) -> bool {
     let total = enabled_rules(ctx).len();
 
@@ -223,7 +226,7 @@ pub fn run(
     }
 
     if let Some(path) = baseline_path {
-        all_violations = match baseline::filter(path, all_violations) {
+        all_violations = match baseline::filter(path, all_violations, baseline_forbid) {
             Ok(violations) => violations,
 
             Err(error) => {
@@ -483,7 +486,7 @@ pub(crate) fn collect_violations(
     extensions.sort_unstable();
     extensions.dedup();
 
-    let (paths, target_rels) = analysis_paths(ctx, paths_override, &extensions)?;
+    let (paths, mut target_rels) = analysis_paths(ctx, paths_override, &extensions)?;
     let test_roots = cargo_test_roots(ctx, &paths);
     let test_only_files = languages::rust::test_files::discover(&paths, ctx.root, &test_roots);
     let registered_names: HashSet<&str> = ctx
@@ -496,6 +499,20 @@ pub(crate) fn collect_violations(
     let cache = (!fix_mode)
         .then(|| cache::Session::open(ctx, &rules))
         .flatten();
+
+    if ctx.dirty
+        && (cache.as_ref().is_some_and(|cache| cache.policy_changed)
+            || !walk::git_dirty_paths(ctx.root, ctx.workspace_root, &[], &["toml"])?.is_empty()
+            || target_rels.as_ref().is_some_and(|paths| {
+                paths.iter().any(|path| {
+                    Path::new(path)
+                        .extension()
+                        .is_some_and(|extension| extension == "toml")
+                })
+            }))
+    {
+        target_rels = None;
+    }
 
     if let Some(result) =
         complete_cache_result(cache.as_ref(), &rules, target_rels.as_ref(), ctx.dirty)
@@ -522,7 +539,12 @@ pub(crate) fn collect_violations(
         workspace_files,
         workspace_manifests,
     ) = merge_file_results(results);
+    let inventory = walk::source_paths(ctx.workspace_root, &[], &[])?
+        .iter()
+        .map(|path| relative_path(path, ctx.root))
+        .collect::<Result<Vec<_>, _>>()?;
     let workspace_ctx = WorkspaceCtx {
+        paths: &inventory,
         files: &workspace_files,
         manifests: &workspace_manifests,
         config: ctx.config,
@@ -578,7 +600,7 @@ fn complete_cache_result(
     let mut violations = cache?.complete(rules)?;
 
     if let Some(target_rels) = target_rels {
-        let retain_workspace = dirty && !target_rels.is_empty();
+        let retain_workspace = dirty;
 
         violations.retain(|violation| {
             target_rels.contains(&violation.rel)
@@ -639,7 +661,7 @@ fn retain_targets(
         return;
     };
 
-    let retain_workspace = dirty && !target_rels.is_empty();
+    let retain_workspace = dirty;
 
     violations.retain(|violation| {
         target_rels.contains(&violation.rel)
@@ -717,6 +739,7 @@ fn analyze_path(path: &Path, ctx: &RunCtx<'_>, dispatch: &AnalysisDispatch<'_>) 
     let lines: Vec<&str> = contents.lines().collect();
     let package = package_for_path(ctx.packages, path);
     let file = FileCtx {
+        test_only: dispatch.test_only_files.contains(&rel),
         rel: &rel,
         path,
         package_name: package.map(|package| package.name.as_str()),
@@ -838,20 +861,31 @@ fn workspace_violations(
         else {
             continue;
         };
-        let patterns = workspace_ctx.config.ignore_patterns(rule.info.name);
         let files: Vec<_> = workspace_ctx
             .files
             .iter()
-            .filter(|file| !crate::matches_ignore(&file.rel, patterns))
+            .filter(|file| workspace_ctx.config.applies_to(rule.info.name, &file.rel))
             .cloned()
             .collect();
         let manifests: Vec<_> = workspace_ctx
             .manifests
             .iter()
-            .filter(|manifest| !crate::matches_ignore(&manifest.rel, patterns))
+            .filter(|manifest| {
+                rule.info.needs_full_manifest_graph
+                    || workspace_ctx
+                        .config
+                        .applies_to(rule.info.name, &manifest.rel)
+            })
             .cloned()
             .collect();
+        let paths = workspace_ctx
+            .paths
+            .iter()
+            .filter(|path| workspace_ctx.config.applies_to(rule.info.name, path))
+            .cloned()
+            .collect::<Vec<_>>();
         let rule_ctx = WorkspaceCtx {
+            paths: &paths,
             files: &files,
             manifests: &manifests,
             config: workspace_ctx.config,
@@ -898,7 +932,7 @@ mod tests {
     use crate::infra::ignore::Suppressions;
 
     fn input_count_rule(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
-        (ctx.files.len() > 1 || ctx.manifests.len() > 1)
+        (ctx.files.len() > 1 || ctx.manifests.len() > 1 || ctx.paths.len() > 1)
             .then(|| crate::violation("kept.rs", 1, "ignored input leaked into workspace rule"))
             .into_iter()
             .collect()
@@ -1053,15 +1087,37 @@ mod tests {
         ];
         let manifests = [
             crate::WorkspaceManifest {
+                package_name: None,
+                patch_tables: BTreeMap::default(),
+                workspace_dependencies: Vec::new(),
                 rel: "Cargo.toml".to_owned(),
                 dependencies: Vec::new(),
             },
             crate::WorkspaceManifest {
+                package_name: None,
+                patch_tables: BTreeMap::default(),
+                workspace_dependencies: Vec::new(),
                 rel: "ignored/Cargo.toml".to_owned(),
                 dependencies: Vec::new(),
             },
         ];
+        let inventory = ["kept.rs".to_owned(), "ignored/script.py".to_owned()];
         let ctx = WorkspaceCtx {
+            paths: &inventory,
+            files: &files,
+            manifests: &manifests,
+            config: &config,
+        };
+
+        verify_true!(workspace_violations(None, &[&INPUT_COUNT_RULE], &ctx).is_empty())?;
+
+        let rule_config = config.rules.get_mut(INPUT_COUNT_RULE.info.name).or_fail()?;
+
+        rule_config.ignore.clear();
+        rule_config.only = vec!["kept.rs".to_owned(), "Cargo.toml".to_owned()];
+
+        let ctx = WorkspaceCtx {
+            paths: &inventory,
             files: &files,
             manifests: &manifests,
             config: &config,
@@ -1535,7 +1591,14 @@ mod tests {
             dirty: false,
         };
 
-        verify_false!(run(&ctx, FixMode::Apply, ReportFormat::Human, None, None,))?;
+        verify_false!(run(
+            &ctx,
+            FixMode::Apply,
+            ReportFormat::Human,
+            None,
+            None,
+            &[]
+        ))?;
 
         let fixed = file::read_text(&fixable).or_fail()?;
 

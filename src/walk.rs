@@ -187,9 +187,10 @@ pub(crate) fn visible_source_files_with_boundaries(
         match entry {
             Ok(entry)
                 if entry.file_type().is_some_and(|kind| kind.is_file())
-                    && entry.path().extension().is_some_and(|extension| {
-                        extensions.iter().any(|expected| extension == *expected)
-                    }) =>
+                    && (extensions.is_empty()
+                        || entry.path().extension().is_some_and(|extension| {
+                            extensions.iter().any(|expected| extension == *expected)
+                        })) =>
             {
                 files.push(PathBuf::from(entry.into_path()));
             }

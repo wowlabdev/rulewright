@@ -53,15 +53,15 @@ crate::workspace_rule!(
 );
 
 fn check_duplicate_strings(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
-    let min_chars = ctx
-        .config
-        .get_usize("rust_duplicate_strings", &DUPLICATE_STRINGS_PARAMS[0]);
-    let min_occurrences = ctx
-        .config
-        .get_usize("rust_duplicate_strings", &DUPLICATE_STRINGS_PARAMS[1]);
     let mut occurrences = HashMap::<&str, Vec<(&str, usize)>>::default();
 
     for file in ctx.files {
+        let min_chars = ctx.config.get_usize(
+            "rust_duplicate_strings",
+            &DUPLICATE_STRINGS_PARAMS[0],
+            &file.rel,
+        );
+
         for string in &file.strings {
             let content = string
                 .value
@@ -80,10 +80,7 @@ fn check_duplicate_strings(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
 
     let mut violations = Vec::new();
 
-    for locations in occurrences
-        .values_mut()
-        .filter(|locations| locations.len() >= min_occurrences)
-    {
+    for locations in occurrences.values_mut() {
         locations.sort_unstable();
         let Some(&(first_rel, first_line)) = locations.first() else {
             continue;
@@ -91,6 +88,14 @@ fn check_duplicate_strings(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
         let occurrence_count = locations.len();
 
         for &(rel, line) in locations.iter().skip(1) {
+            if occurrence_count
+                < ctx
+                    .config
+                    .get_usize("rust_duplicate_strings", &DUPLICATE_STRINGS_PARAMS[1], rel)
+            {
+                continue;
+            }
+
             violations.push(violation(
                 rel,
                 line,

@@ -15,6 +15,10 @@ pub struct ConfigRule {
     pub enabled: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ignore: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub only: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overrides: Vec<crate::infra::config::RuleOverride>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub params: Option<BTreeMap<String, ConfigValue>>,
 }
@@ -267,8 +271,9 @@ pub struct Example {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-// #rw(rust_non_exhaustive_on_public) internal enum, all variants matched within this crate
+#[non_exhaustive]
 pub enum ParamType {
+    Bool,
     Int,
     StringArray,
 }
@@ -277,6 +282,7 @@ impl ParamType {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Bool => "bool",
             Self::Int => "i64",
             Self::StringArray => "string-array",
         }
@@ -284,8 +290,9 @@ impl ParamType {
 }
 
 #[derive(Clone, Copy, Debug)]
-// #rw(rust_non_exhaustive_on_public) internal enum, all variants matched within this crate
+#[non_exhaustive]
 pub enum ParamDefault {
+    Bool(bool),
     Int(i64),
     StringArray(&'static [&'static str]),
 }
@@ -333,6 +340,9 @@ pub struct RuleInfo {
     pub examples: &'static [Example],
     pub params: &'static [RuleParam],
     pub default_enabled: bool,
+    /// Receive all manifests, including those outside this rule's configured scope.
+    /// Rules using this capability must apply configuration scope to reported sources.
+    pub needs_full_manifest_graph: bool,
 }
 
 impl RuleInfo {
@@ -354,6 +364,7 @@ impl RuleInfo {
             examples,
             params,
             default_enabled: true,
+            needs_full_manifest_graph: false,
         }
     }
 
@@ -361,6 +372,14 @@ impl RuleInfo {
     #[must_use]
     pub const fn disabled_by_default(mut self) -> Self {
         self.default_enabled = false;
+
+        self
+    }
+
+    /// Retain out-of-scope manifests for dependency graph resolution.
+    #[must_use]
+    pub const fn with_full_manifest_graph(mut self) -> Self {
+        self.needs_full_manifest_graph = true;
 
         self
     }
@@ -425,6 +444,10 @@ fn validate_rule(pack: &'static str, rule: &Rule) -> Result<(), RegistryError> {
     let mut params = HashSet::new();
 
     for parameter in rule.info.params {
+        if ["enabled", "ignore", "only", "overrides"].contains(&parameter.name) {
+            return Err(invalid("parameter name is reserved for rule configuration"));
+        }
+
         if !valid_identifier(parameter.name) {
             return Err(invalid(
                 "parameter names must be valid lowercase identifiers",
@@ -440,7 +463,7 @@ fn validate_rule(pack: &'static str, rule: &Rule) -> Result<(), RegistryError> {
                 return Err(invalid("integer parameter defaults must be non-negative"));
             }
 
-            (ParamType::Int, ParamDefault::Int(_)) => {}
+            (ParamType::Int, ParamDefault::Int(_)) | (ParamType::Bool, ParamDefault::Bool(_)) => {}
 
             (ParamType::StringArray, ParamDefault::StringArray(defaults)) => {
                 let mut unique_defaults = HashSet::new();

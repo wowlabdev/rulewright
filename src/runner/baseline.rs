@@ -17,6 +17,8 @@ pub(super) enum BaselineError {
     },
     #[error("unsupported baseline schema version {0}")]
     Schema(u32),
+    #[error("baseline contains forbidden rule `{0}`")]
+    Forbidden(String),
     #[error("failed to serialize baseline: {0}")]
     Serialize(#[from] serde_json::Error),
 }
@@ -69,6 +71,7 @@ pub(super) fn write(path: &Path, violations: &[Violation]) -> Result<(), Baselin
 pub(super) fn filter(
     path: &Path,
     violations: Vec<Violation>,
+    forbidden: &[String],
 ) -> Result<Vec<Violation>, BaselineError> {
     let contents = file::read_text(path)?;
     let document: BaselineDocument =
@@ -84,6 +87,10 @@ pub(super) fn filter(
     let mut remaining: BTreeMap<FindingKey, usize> = BTreeMap::new();
 
     for finding in document.findings {
+        if forbidden.contains(&finding.rule) {
+            return Err(BaselineError::Forbidden(finding.rule));
+        }
+
         let key = (finding.rule, finding.path, finding.message);
         let count = remaining.entry(key).or_default();
 
@@ -134,7 +141,7 @@ mod tests {
             crate::violation("src/lib.rs", 9, "same finding").with_rule("rust_example"),
             crate::violation("src/lib.rs", 12, "same finding").with_rule("rust_example"),
         ];
-        let new_findings = filter(&path, current).or_fail()?;
+        let new_findings = filter(&path, current, &[]).or_fail()?;
 
         verify_eq!(new_findings.len(), 1)?;
 
@@ -150,7 +157,7 @@ mod tests {
         write(&path, &recorded).or_fail()?;
         let moved = vec![crate::violation("src/lib.rs", 200, "finding").with_rule("rust_example")];
 
-        verify_true!(filter(&path, moved).or_fail()?.is_empty())
+        verify_true!(filter(&path, moved, &[]).or_fail()?.is_empty())
     }
 
     #[gtest]
@@ -174,6 +181,6 @@ mod tests {
             .map(|line| crate::violation("src/lib.rs", line, "finding").with_rule("rust_example"))
             .collect();
 
-        verify_eq!(filter(&path, current).or_fail()?.len(), 1)
+        verify_eq!(filter(&path, current, &[]).or_fail()?.len(), 1)
     }
 }

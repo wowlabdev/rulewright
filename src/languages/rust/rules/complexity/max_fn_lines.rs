@@ -27,10 +27,10 @@ crate::ast_rule!(
 );
 
 fn check_max_fn_lines(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let max_fn_lines = ctx
-        .file
-        .config
-        .get_usize("rust_max_fn_lines", &MAX_FN_LINES_PARAMS[0]);
+    let max_fn_lines =
+        ctx.file
+            .config
+            .get_usize("rust_max_fn_lines", &MAX_FN_LINES_PARAMS[0], ctx.file.rel);
 
     ctx.nodes::<ast::Fn>()
         .filter(|function| !ctx.is_in_test(function))
