@@ -6,6 +6,8 @@ use crate::{AstCtx, Example, Violation};
 const EXAMPLES: &[Example] = &[
     Example { label: "manual display", code: "struct ParseError; impl std::fmt::Display for ParseError { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { todo!() } }", pass: false },
     Example { label: "manual error", code: "struct ParseError; impl std::error::Error for ParseError {}", pass: false },
+    Example { label: "manual core display", code: "struct IdError; impl core::fmt::Display for IdError { fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result { todo!() } }", pass: false },
+    Example { label: "manual core error", code: "struct IdError; impl core::error::Error for IdError {}", pass: false },
     Example { label: "thiserror", code: "#[derive(Debug, thiserror::Error)] #[error(\"bad\")] struct ParseError;", pass: true },
     Example { label: "non-error display", code: "struct Label; impl std::fmt::Display for Label { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { todo!() } }", pass: true },
     Example { label: "unrelated trait", code: "struct ParseError; impl Clone for ParseError { fn clone(&self) -> Self { Self } }", pass: true },
@@ -46,8 +48,14 @@ fn check_manual_error_impl(ctx: &AstCtx<'_>) -> Vec<Violation> {
                 .filter(|ch| !ch.is_whitespace())
                 .collect();
             let trait_name = match normalized.as_str() {
-                "Display" | "fmt::Display" | "std::fmt::Display" => "Display",
-                "Error" | "error::Error" | "std::error::Error" => "std::error::Error",
+                "Display" | "fmt::Display" | "std::fmt::Display" | "core::fmt::Display" => {
+                    "Display"
+                }
+
+                "Error" | "error::Error" | "std::error::Error" | "core::error::Error" => {
+                    "std::error::Error"
+                }
+
                 _ => return None,
             };
 
