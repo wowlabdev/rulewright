@@ -57,6 +57,19 @@ For an established workspace, `--write-baseline` records the current debt withou
 
 Every registered rule has an explicit entry in `rulewright.toml`. Entries control enablement, path ignores, and typed parameters, while `--strict` rejects missing or unknown entries. The generated file is a starting point, not a demand that every repository use our exact policy.
 
+Parameters can differ by path. `only` limits a rule to matching paths, `ignore` exempts paths, and ordered overrides set parameters for matching paths, the last match winning:
+
+```toml
+[rules.rust_max_fn_lines]
+enabled = true
+ignore = ["src/generated/**"]
+threshold = 80
+
+[[rules.rust_max_fn_lines.overrides]]
+paths = ["tests/**"]
+threshold = 150
+```
+
 Intentional findings can be suppressed, but the reason is part of the directive:
 
 ```rust
