@@ -11,7 +11,7 @@ trap 'rm -rf "${temporary_dir}"' EXIT
 
 (
     cd "${repository_root}"
-    cargo run --quiet --locked -- --init --config "${default_config}" >/dev/null
+    cargo run --quiet --locked -- --init --quiet --config "${default_config}"
     cargo run --quiet --locked -- --llm --config "${default_config}" >"${llm_report}"
 )
 

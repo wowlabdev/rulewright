@@ -68,7 +68,7 @@ Enable Rulewright's `rule-pack-testing` feature in the pack's development depend
 
 ```toml
 [dev-dependencies]
-rulewright = { version = "0.2", features = ["rule-pack-testing"] }
+rulewright = { version = "0.3", features = ["rule-pack-testing"] }
 ```
 
 The testing feature is not needed by the wrapper binary in normal builds.
