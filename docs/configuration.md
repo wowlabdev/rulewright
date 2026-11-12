@@ -22,6 +22,16 @@ allow_suppressions = false
 
 With that policy, `#rw(...)` produces a `rust_rulewright_directives` finding and does not suppress its target. Layout markers such as `#rw:aligned` and `#rw:sorted(asc)` are unaffected because they opt into checks instead of hiding findings.
 
+## Cache inputs
+
+Rulewright caches results keyed by the contents of Rust and TOML files, the configuration, the rule registry, and the paths of all walked files. A rule that reads another file itself, such as a pack rule that loads a CSV or Markdown list, must have that file declared, or an edit to it returns a stale cached result:
+
+```toml
+cache_inputs = ["data/**/*.csv", "docs/crates.md"]
+```
+
+Entries are workspace-relative globs or `[glob_sets]` names. The contents of every walked file they match enter the cache key; a change invalidates all cached results and widens `--dirty` runs. Files excluded from walking, for example by `.gitignore`, are not seen.
+
 ## Rule entries
 
 `rulewright --init` emits every rule from the active registry, including downstream packs:

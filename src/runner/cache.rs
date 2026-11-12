@@ -57,7 +57,7 @@ impl Session {
             }),
         )
         .ok()?;
-        let base = base_checksum(ctx, rules)?;
+        let base = base_checksum(ctx, rules, &source_paths)?;
         let rust_context = rust_context_checksum(&snapshot)?;
         let inventory = inventory_checksum(ctx.workspace_root, &source_paths)?;
         let toml_context = toml_context_checksum(ctx.root, &snapshot, inventory)?;
@@ -384,7 +384,11 @@ impl CachedViolation {
     }
 }
 
-fn base_checksum(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Checksum> {
+fn base_checksum(
+    ctx: &RunCtx<'_>,
+    rules: &[&'static Rule],
+    source_paths: &[PathBuf],
+) -> Option<Checksum> {
     let executable = checksum::current_executable().ok()?;
     let config = serde_json::to_vec(ctx.config).ok()?;
     let mut encoded = Vec::new();
@@ -469,9 +473,36 @@ fn base_checksum(ctx: &RunCtx<'_>, rules: &[&'static Rule]) -> Option<Checksum> 
         }
     }
 
+    append_part(
+        &mut encoded,
+        cache_inputs_checksum(ctx.root, source_paths, ctx.config.cache_inputs())?.as_bytes(),
+    )?;
+
     for manifest in crate::infra::walk::source_paths(ctx.workspace_root, &[], &["toml"]).ok()? {
         append_part(&mut encoded, manifest.to_str()?.as_bytes())?;
         append_part(&mut encoded, checksum::file(&manifest).ok()?.as_bytes())?;
+    }
+
+    Some(checksum::bytes(encoded))
+}
+
+/// Checksum the paths and contents of walked files matching the configured `cache_inputs`.
+fn cache_inputs_checksum(
+    root: &Path,
+    source_paths: &[PathBuf],
+    patterns: &[String],
+) -> Option<Checksum> {
+    let mut encoded = Vec::new();
+
+    if !patterns.is_empty() {
+        for path in source_paths {
+            let rel = relative_string(path, root)?;
+
+            if crate::matches_ignore(&rel, patterns) {
+                append_part(&mut encoded, rel.as_bytes())?;
+                append_part(&mut encoded, checksum::file(path).ok()?.as_bytes())?;
+            }
+        }
     }
 
     Some(checksum::bytes(encoded))
@@ -682,6 +713,32 @@ mod tests {
             not(eq(inventory_checksum(root, &paths)))
         )?;
         Ok(())
+    }
+
+    #[gtest]
+    fn cache_inputs_track_contents_of_matching_files_only() -> Result<()> {
+        let temp = temporary::Directory::new().or_fail()?;
+        let root = temp.path();
+        let paths = ["docs/list.md", "notes.txt"].map(|name| root.join(name));
+
+        directory::ensure(&root.join("docs")).or_fail()?;
+
+        for path in &paths {
+            file::write_text(path, "initial").or_fail()?;
+        }
+
+        let patterns = ["docs/**".to_owned()];
+        let capture = |patterns: &[String]| cache_inputs_checksum(root, &paths, patterns).unwrap();
+        let initial = capture(&patterns);
+        let unconfigured = capture(&[]);
+
+        file::write_text(&paths[1], "changed").or_fail()?;
+        verify_eq!(capture(&patterns), initial)?;
+
+        file::write_text(&paths[0], "changed").or_fail()?;
+        verify_that!(capture(&patterns), not(eq(initial)))?;
+
+        verify_eq!(capture(&[]), unconfigured)
     }
 
     #[gtest]

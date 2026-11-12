@@ -35,6 +35,8 @@ struct RawConfig {
     #[serde(default = "enabled_by_default")]
     allow_suppressions: bool,
     #[serde(default)]
+    cache_inputs: Vec<String>,
+    #[serde(default)]
     glob_sets: BTreeMap<String, Vec<String>>,
     rules: BTreeMap<String, RawRuleConfig>,
 }
@@ -66,6 +68,8 @@ pub struct RuleOverride {
 #[derive(Debug, Serialize)]
 pub struct Config {
     allow_suppressions: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    cache_inputs: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     glob_sets: BTreeMap<String, Vec<String>>,
     pub(crate) rules: BTreeMap<String, RuleConfig>,
@@ -132,6 +136,12 @@ impl Config {
 
     pub fn is_enabled(&self, name: &str) -> bool {
         self.rules.get(name).is_some_and(|r| r.enabled)
+    }
+
+    /// Workspace-relative globs of extra files whose contents invalidate cached results.
+    #[must_use]
+    pub fn cache_inputs(&self) -> &[String] {
+        &self.cache_inputs
     }
 
     /// Whether source-level `#rw(...)` suppression directives are permitted.
@@ -324,6 +334,7 @@ impl Config {
 
         Config {
             allow_suppressions: true,
+            cache_inputs: Vec::new(),
             glob_sets: BTreeMap::new(),
             rules,
             workspace: super::workspace::WorkspaceContext::default(),
@@ -333,6 +344,7 @@ impl Config {
     pub(crate) fn generate_registry_default(registered: &[crate::RuleMeta]) -> Config {
         let mut config = Config {
             allow_suppressions: true,
+            cache_inputs: Vec::new(),
             glob_sets: BTreeMap::new(),
             rules: BTreeMap::new(),
             workspace: super::workspace::WorkspaceContext::default(),
@@ -357,6 +369,8 @@ impl Config {
 # Every registered rule MUST appear here. Omitting a rule is an error.
 # Set `enabled = false` to disable a rule without removing its config.
 # Set `allow_suppressions = false` to reject every source-level #rw(...) directive.
+# List `cache_inputs` globs for non-Rust, non-TOML files that rules read, so edits to them
+# invalidate cached results.
 # Run `rulewright --init` to generate a fresh config with all rules.
 #
 # [glob_sets] defines named pattern collections.
@@ -539,7 +553,12 @@ impl Config {
                 RuleConfig {
                     enabled: raw_rule.enabled,
                     ignore,
-                    only: resolve_patterns(&raw_rule.only, &raw.glob_sets, rule_name, &mut errors),
+                    only: resolve_patterns(
+                        &raw_rule.only,
+                        &raw.glob_sets,
+                        &format!("rule `{rule_name}`"),
+                        &mut errors,
+                    ),
                     overrides: raw_rule
                         .overrides
                         .iter()
@@ -547,7 +566,7 @@ impl Config {
                             let paths = resolve_patterns(
                                 &entry.paths,
                                 &raw.glob_sets,
-                                rule_name,
+                                &format!("rule `{rule_name}`"),
                                 &mut errors,
                             );
 
@@ -568,6 +587,13 @@ impl Config {
             );
         }
 
+        let cache_inputs = resolve_patterns(
+            &raw.cache_inputs,
+            &raw.glob_sets,
+            "`cache_inputs`",
+            &mut errors,
+        );
+
         if !errors.is_empty() {
             return Err(ConfigError::new(ConfigErrorKind::Resolve {
                 message: errors.join("\n"),
@@ -576,10 +602,18 @@ impl Config {
 
         Ok(Config {
             allow_suppressions: raw.allow_suppressions,
+            cache_inputs,
             glob_sets: raw.glob_sets,
             rules,
             workspace: super::workspace::WorkspaceContext::default(),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_cache_inputs(mut self, patterns: Vec<String>) -> Self {
+        self.cache_inputs = patterns;
+
+        self
     }
 
     #[cfg(test)]
@@ -687,7 +721,7 @@ fn toml_to_json(value: &toml::Value) -> serde_json::Value {
 fn resolve_patterns(
     entries: &[String],
     sets: &BTreeMap<String, Vec<String>>,
-    rule: &str,
+    owner: &str,
     errors: &mut Vec<String>,
 ) -> Vec<String> {
     let mut result = Vec::new();
@@ -696,13 +730,11 @@ fn resolve_patterns(
         if let Some(patterns) = sets.get(entry.strip_prefix('@').unwrap_or(entry)) {
             result.extend(patterns.iter().cloned());
         } else if entry.starts_with('@') {
-            errors.push(format!(
-                "rule `{rule}` references unknown glob set `{entry}`"
-            ));
+            errors.push(format!("{owner} references unknown glob set `{entry}`"));
         } else {
             if let Err(error) = crate::glob::validate(entry) {
                 errors.push(format!(
-                    "rule `{rule}` contains invalid pattern `{entry}`: {error}"
+                    "{owner} contains invalid pattern `{entry}`: {error}"
                 ));
             }
 

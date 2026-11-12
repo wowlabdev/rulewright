@@ -89,6 +89,10 @@ Workspace records include test functions, structs, and strings. Ordinary line
 rules do not receive `EXAMPLES` constants or rule-registration macro calls;
 use `Rule::rust_line_full` when a rule needs those lines too.
 
+A rule that reads a file from disk instead of from its context must tell its
+users to list that file under the top-level `cache_inputs` configuration;
+otherwise cached results do not notice edits to it.
+
 `WorkspaceCtx::paths` is sorted, deduplicated, and includes every file admitted
 by the walker, including foreign-language files. Ignore files, hidden-file
 policy, workspace boundaries, and Cargo output exclusions still apply.

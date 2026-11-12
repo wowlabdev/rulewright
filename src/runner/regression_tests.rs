@@ -239,3 +239,72 @@ fn dirty_inventory_findings_survive_an_empty_rust_target_set() {
     );
     assert_eq!(findings.len(), 1);
 }
+
+// #rw(rust_global_state) rule callbacks are plain fn pointers, so the fixture root cannot be passed in
+static CONTENT_ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+fn content(_: &WorkspaceCtx<'_>) -> Vec<Violation> {
+    let data = CONTENT_ROOT
+        .get()
+        .and_then(|root| file::read_text(&root.join("data.csv")).ok())
+        .unwrap_or_default();
+
+    data.contains("bad")
+        .then(|| crate::violation("data.csv", 1, "bad row"))
+        .into_iter()
+        .collect()
+}
+
+static CONTENT: &[Rule] = &[Rule::workspace(
+    RuleInfo::new(
+        "fixture_content",
+        "Report a bad data row.",
+        "Exercise declared cache inputs.",
+        Severity::Low,
+        &[],
+        &[],
+    ),
+    content,
+)];
+
+#[test]
+fn declared_cache_inputs_invalidate_results_of_rules_reading_other_files() {
+    let temp = fixture();
+    let root = temp.path();
+    let registry = registry(CONTENT, "content");
+    let rule_filter = vec!["fixture_content".to_owned()];
+    let count = |config: &Config| {
+        let ctx = RunCtx {
+            registry: &registry,
+            config,
+            packages: &[],
+            rule_filter: &rule_filter,
+            package_filter: &[],
+            root,
+            workspace_root: root,
+            quiet: true,
+            dirty: false,
+        };
+
+        collect_violations(&ctx, false, None).unwrap().0.len()
+    };
+
+    CONTENT_ROOT.set(root.to_path_buf()).unwrap();
+    file::write_text(&root.join("data.csv"), "good\n").unwrap();
+
+    let undeclared = Config::generate_default(&[("fixture_content", &[])]);
+
+    assert_eq!(count(&undeclared), 0);
+    file::write_text(&root.join("data.csv"), "bad\n").unwrap();
+    assert_eq!(
+        count(&undeclared),
+        0,
+        "without cache_inputs the result is stale"
+    );
+
+    let declared = undeclared.with_cache_inputs(vec!["*.csv".to_owned()]);
+
+    assert_eq!(count(&declared), 1);
+    file::write_text(&root.join("data.csv"), "good\n").unwrap();
+    assert_eq!(count(&declared), 0);
+}
