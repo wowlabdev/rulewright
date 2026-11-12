@@ -76,7 +76,11 @@ Both Cargo rules are generic and cover normal, dev, build, and target-specific d
 [rules.toml_cargo_layers]
 enabled = true
 ignore = []
-rules = ["services/** !> engine-*,adapters/private/**"]
+rules = [
+    "services/** !> engine-*,adapters/private/**",
+    "crates/core/Cargo.toml => serde, thiserror",
+    "crates/*/Cargo.toml !> test-kit (normal, build)",
+]
 
 [rules.toml_cargo_path_deps]
 enabled = true
@@ -86,7 +90,7 @@ allow_outside_workspace = false
 allow_patch = false
 ```
 
-Layer edges have the grammar `manifest-glob !> dependency-glob,dependency-glob`. The right side matches the dependency key, resolved renamed package name (including workspace inheritance), or a known destination manifest path. An empty edge list imposes no boundaries. Invalid edge syntax and globs are configuration errors.
+Layer edges have the grammar `manifest-glob !> dependency-glob,...` (deny) or `manifest-glob => dependency-glob,...` (allow). The right side matches the dependency key, resolved renamed package name (including workspace inheritance), or a known destination manifest path. A deny edge reports every matching dependency. Allow edges list the complete set of dependencies, workspace packages and third-party crates alike, that a matching manifest may declare: the targets of all allow edges matching a manifest are combined, anything outside them is reported, and `manifest-glob =>` with no targets allows nothing. A manifest that no allow edge matches is not restricted by allow edges. A trailing `(normal, build, dev)` limits an edge to those dependency kinds; without it an edge covers all three. An empty edge list imposes no boundaries. Invalid edge syntax, kinds, and globs are configuration errors.
 
 Path policy checks declaration locations, including virtual roots' `[workspace.dependencies]` and `[patch.<source>]`. Workspace inheritance is checked at its root declaration. `allow_in` restricts manifests that may declare paths; `allow_patch` additionally permits path-bearing patches. `allow_outside_workspace` controls lexical absolute paths and `..` escapes relative to the declaring manifest. This check does not resolve filesystem symlinks or inspect ignored files; it is a manifest policy, not a filesystem sandbox. None of these rules supplies automatic fixes.
 
