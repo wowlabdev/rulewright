@@ -30,9 +30,9 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
-        label: "strings in tests are fixtures",
+        label: "repeated strings in tests",
         code: "#[cfg(test)] mod tests { const A: &str = \"a deliberately long repeated fixture string value\"; const B: &str = \"a deliberately long repeated fixture string value\"; const C: &str = \"a deliberately long repeated fixture string value\"; }",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "strings in Rulewright test registration macros are fixtures",

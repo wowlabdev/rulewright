@@ -53,7 +53,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "weasel type in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct FakeManager;\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -74,7 +74,6 @@ fn check_weasel_words(ctx: &AstCtx<'_>) -> Vec<Violation> {
             .get_str_array("rust_weasel_words", &WEASEL_WORDS_PARAMS[0], ctx.file.rel);
 
     ctx.nodes::<ast::Item>()
-        .filter(|item| !ctx.is_in_test(item))
         .filter_map(|item| {
             let name = naming::type_def_name(&item)?;
             let name_text = name.text();

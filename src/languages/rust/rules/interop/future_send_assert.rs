@@ -34,7 +34,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "Future impl in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct Foo;\n    impl Future for Foo { type Output = (); }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -47,7 +47,6 @@ crate::ast_rule!(
 
 fn check_future_send_assert(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Impl>()
-        .filter(|item_impl| !ctx.is_in_test(item_impl))
         .filter_map(|item_impl| {
             let name = future_impl_target(&item_impl)?;
 

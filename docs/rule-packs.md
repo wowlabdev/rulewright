@@ -82,9 +82,12 @@ Pass a normalized workspace-relative path to every parameter lookup:
 or `ctx.file.rel` for AST/TOML rules. Workspace rules should use the relevant
 record or finding path. Boolean parameters use `get_bool`.
 
-`FileCtx::test_only` uses the same Cargo target and module-graph classification
-as AST rules. Ordinary line rules still receive the production-only line view;
-use `Rule::rust_line_full` when a rule needs the complete test source.
+Rules see test code. `FileCtx::test_only` reports the Cargo target and
+module-graph classification of the whole file, and `AstCtx::is_in_test` reports
+it for one node; a rule that should not apply to test code filters with them.
+Workspace records include test functions, structs, and strings. Ordinary line
+rules do not receive `EXAMPLES` constants or rule-registration macro calls;
+use `Rule::rust_line_full` when a rule needs those lines too.
 
 `WorkspaceCtx::paths` is sorted, deduplicated, and includes every file admitted
 by the walker, including foreign-language files. Ignore files, hidden-file

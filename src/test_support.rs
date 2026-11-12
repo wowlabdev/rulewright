@@ -79,7 +79,6 @@ fn check_workspace_sources_with_config(
             &file,
             &parse.tree(),
             suppressions,
-            false,
         ));
     }
 
@@ -121,7 +120,6 @@ pub(crate) fn check_workspace_member(
         &file,
         &parse.tree(),
         suppressions,
-        false,
     )];
     let manifests = [crate::languages::workspace::WorkspaceManifest {
         package_name: Some("example".to_owned()),

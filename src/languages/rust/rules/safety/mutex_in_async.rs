@@ -25,7 +25,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "Mutex in async in test",
         code: "#[cfg(test)]\nmod tests {\n    async fn t() { let _m = std::sync::Mutex::new(0); }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -40,7 +40,7 @@ crate::ast_rule!(
 fn check_mutex_in_async(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let expression_paths = ctx
         .nodes::<ast::PathExpr>()
-        .filter(|path| is_in_async_fn(path) && !ctx.is_in_test(path))
+        .filter(is_in_async_fn)
         .filter(|path| path.path().is_some_and(|path| is_std_mutex_path(&path)));
     let expression_violations = expression_paths
         .map(|path| {
@@ -51,7 +51,7 @@ fn check_mutex_in_async(ctx: &AstCtx<'_>) -> Vec<Violation> {
         });
     let type_paths = ctx
         .nodes::<ast::PathType>()
-        .filter(|path| is_in_async_fn(path) && !ctx.is_in_test(path))
+        .filter(is_in_async_fn)
         .filter(|path| path.path().is_some_and(|path| is_std_mutex_path(&path)));
     let type_violations = type_paths.map(|path| {
         ctx.violation(

@@ -55,7 +55,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "AsRef-bounded struct in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct User<T: AsRef<str>> { name: T }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -69,10 +69,7 @@ crate::ast_rule!(
 fn check_asref_bound_on_type(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let mut violations = Vec::new();
 
-    for item in ctx
-        .nodes::<ast::Struct>()
-        .filter(|item| !ctx.is_in_test(item))
-    {
+    for item in ctx.nodes::<ast::Struct>() {
         if let (Some(name), Some(fields)) = (item.name(), item.field_list()) {
             check_type_item(
                 ctx,
@@ -85,10 +82,7 @@ fn check_asref_bound_on_type(ctx: &AstCtx<'_>) -> Vec<Violation> {
         }
     }
 
-    for item in ctx
-        .nodes::<ast::Enum>()
-        .filter(|item| !ctx.is_in_test(item))
-    {
+    for item in ctx.nodes::<ast::Enum>() {
         if let (Some(name), Some(variants)) = (item.name(), item.variant_list()) {
             let field_types: Vec<ast::Type> = variants
                 .variants()

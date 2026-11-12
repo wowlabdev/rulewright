@@ -43,7 +43,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "long name in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct GlobalApplicationConfigManagerFake;\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -63,7 +63,6 @@ fn check_long_compound_name(ctx: &AstCtx<'_>) -> Vec<Violation> {
     );
 
     ctx.nodes::<ast::Item>()
-        .filter(|item| !ctx.is_in_test(item))
         .filter_map(|item| {
             let name = naming::type_def_name(&item)?;
             let name_text = name.text();

@@ -32,7 +32,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "yoda in test module",
         code: "#[cfg(test)]\nmod tests {\n  fn t(x: i32) { if 0 == x {} }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -44,10 +44,7 @@ crate::ast_rule!(
 
 fn check_yoda_conditions(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::BinExpr>()
-        .filter(|expr| {
-            !ctx.is_in_test(expr)
-                && matches!(expr.op_kind(), Some(BinaryOp::CmpOp(CmpOp::Eq { .. })))
-        })
+        .filter(|expr| matches!(expr.op_kind(), Some(BinaryOp::CmpOp(CmpOp::Eq { .. }))))
         .filter_map(|expr| {
             let (left, right) = expr.sub_exprs();
             let (left, right) = (left?, right?);

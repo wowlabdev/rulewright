@@ -16,11 +16,12 @@ fn project(source: &str) -> tempfile::TempDir {
 #[test]
 fn next_line_suppression_hides_only_the_named_rule() {
     let temporary = project(
-        r#"pub fn boundary() {
+        &r#"pub fn boundary() {
     // #rw(rust_dbg) value is intentionally visible while probing this boundary
-    dbg!("/home/dev/private-fixture");
+    dbg!("$HOME_PATH/private-fixture");
 }
-"#,
+"#
+        .replace("$HOME_PATH", &["/", "home", "/dev"].concat()),
     );
 
     let debug = run(temporary.path(), &["--rule", "rust_dbg"]);

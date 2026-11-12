@@ -29,7 +29,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "duplicate impl in test module",
         code: "#[cfg(test)]\nmod tests {\n  struct Foo;\n  impl Foo { fn a() {} }\n  impl Foo { fn b() {} }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -45,7 +45,7 @@ fn check_multiple_inherent_impl(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
     for item_impl in ctx
         .nodes::<ast::Impl>()
-        .filter(|item_impl| !ctx.is_in_test(item_impl) && item_impl.trait_().is_none())
+        .filter(|item_impl| item_impl.trait_().is_none())
     {
         let Some(self_type) = item_impl.self_ty() else {
             continue;

@@ -137,7 +137,6 @@ fn check_ffi_thin_glue(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Fn>()
         .filter(|function| {
             super::support::is_item_or_impl_fn(function)
-                && !ctx.is_in_test(function)
                 && super::is_extern_c(function.abi())
         })
         .filter_map(|function| {

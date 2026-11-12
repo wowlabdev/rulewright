@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::assert_is_empty,
     reason = "fixture assertions use explicit collection emptiness"
 )]

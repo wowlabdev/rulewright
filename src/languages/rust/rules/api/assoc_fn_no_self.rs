@@ -51,7 +51,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "unrelated helper in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct Db;\n    impl Db {\n        fn check_parameters(input: &str) -> bool {\n            input.is_empty()\n        }\n    }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -67,7 +67,7 @@ crate::ast_rule!(
 
 fn check_assoc_fn_no_self(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Impl>()
-        .filter(|item| !ctx.is_in_test(item) && item.trait_().is_none())
+        .filter(|item| item.trait_().is_none())
         .flat_map(|item| {
             let Some(ty) = item.self_ty().and_then(|ty| type_name(&ty)) else {
                 return Vec::new();

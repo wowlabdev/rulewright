@@ -57,7 +57,6 @@ pub fn check_workspace_sources_with_config(
                 &file,
                 &parse.tree(),
                 suppressions,
-                false,
             ));
         } else if rel.ends_with("Cargo.toml") {
             let parse = taplo::parser::parse(contents);

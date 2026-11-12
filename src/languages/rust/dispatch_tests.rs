@@ -44,6 +44,42 @@ fn analyze_selected_with_config(
     analyze(&file, &rules, &registered, fix_mode, FileKind::Production)
 }
 
+fn analyze_test_only_file(source: &str, selected: &[&str]) -> Vec<&'static str> {
+    let metadata = crate::all_rules();
+    let config = Config::generate_default(
+        &metadata
+            .iter()
+            .map(|rule| (rule.name, rule.params))
+            .collect::<Vec<_>>(),
+    );
+    let lines: Vec<&str> = source.lines().collect();
+    let file = FileCtx {
+        test_only: true,
+        rel: "tests/big.rs",
+        path: Path::new("tests/big.rs"),
+        package_name: None,
+        package_publishable: None,
+        lines: &lines,
+        contents: source,
+        config: &config,
+    };
+    let rules: Vec<&Rule> = inventory::iter::<Rule>
+        .into_iter()
+        .filter(|rule| selected.contains(&rule.info.name))
+        .collect();
+    let registered: HashSet<&str> = rules.iter().map(|rule| rule.info.name).collect();
+    let mut found: Vec<&'static str> =
+        analyze(&file, &rules, &registered, false, FileKind::TestOnly)
+            .violations
+            .iter()
+            .filter_map(|violation| violation.rule)
+            .collect();
+
+    found.sort_unstable();
+    found.dedup();
+    found
+}
+
 #[gtest]
 fn disabled_suppressions_are_reported_before_they_can_skip_a_rule() -> Result<()> {
     let metadata = crate::all_rules();
@@ -77,7 +113,7 @@ fn disabled_suppressions_are_reported_before_they_can_skip_a_rule() -> Result<()
 }
 
 #[gtest]
-fn production_line_rules_see_code_but_not_test_only_fixtures() -> Result<()> {
+fn line_rules_see_production_and_test_code() -> Result<()> {
     let home = ["/", "home", "/dev"].concat();
     let source = r#"
 const PRODUCTION: &str = "$HOME_PATH/production";
@@ -90,9 +126,9 @@ mod tests {
     .replace("$HOME_PATH", &home);
     let analysis = analyze_selected(&source, &["rust_abs_home_path"], false);
 
-    verify_eq!(analysis.violations.len(), 1)?;
+    let lines: Vec<usize> = analysis.violations.iter().map(|v| v.line).collect();
 
-    verify_eq!(analysis.violations[0].line, 2)
+    verify_eq!(lines, vec![2, 6])
 }
 
 #[gtest]
@@ -180,6 +216,17 @@ fn test_only() {
     verify_eq!(dbg_lines, [3])?;
 
     verify_eq!(tautological_lines, [9])
+}
+
+#[gtest]
+fn test_only_files_reach_shape_rules_but_not_test_exempt_rules() -> Result<()> {
+    let source = "fn helper(a: bool, b: bool, c: bool, d: u8, e: u8, f: u8, g: u8) { dbg!(a); }\n";
+    let found = analyze_test_only_file(
+        source,
+        &["rust_bool_params", "rust_large_fn_params", "rust_dbg"],
+    );
+
+    verify_eq!(found, vec!["rust_bool_params", "rust_large_fn_params"])
 }
 
 #[gtest]

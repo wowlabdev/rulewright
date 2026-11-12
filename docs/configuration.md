@@ -92,6 +92,8 @@ ignore = ["@generated"]
 
 Ignore patterns are matched against slash-separated paths relative to the workspace root. `*` stays within one path component and `**` crosses directories, so `**/*_tests.rs` covers split test modules at the root and at any nesting depth, while `crates/example-tests/**` covers an entire workspace member. Invalid patterns are rejected while loading the configuration instead of silently matching nothing. Rulewright normalizes discovered Windows paths before matching them.
 
+Rules apply to test code as well as production code. The exceptions are rules whose subject does not exist in tests or whose policy is deliberately different there: public API, error-type and documentation rules, panic, process-exit, `unwrap`, `expect` and assertion-message rules, console and logging output, ambient I/O, performance rules, magic numbers, lossy casts, float equality, unchecked indexing, wildcard imports, and URL literals. Size, shape, signature, duplication, ordering, layout, naming, and safety rules all reach test files, inline test modules, and test-only packages.
+
 Cargo test, benchmark, and example targets are classified as test code from Cargo metadata. That classification follows their `mod`, `#[path = "..."]`, and `include!("...")` edges, as does any Rust file reached only through `#[cfg(test)] mod ...`; physical filenames are not used as a substitute for the module graph.
 
 A workspace member built only as test infrastructure can declare that all of its Rust targets are test-only:
@@ -101,7 +103,7 @@ A workspace member built only as test infrastructure can declare that all of its
 test-only = true
 ```
 
-Use this only for dedicated fixture or test-harness packages. A package containing production library or binary code should leave it unset.
+Use this only for dedicated fixture or test-harness packages. A package containing production library or binary code should leave it unset. Test-only packages are still checked by every rule that applies to test code.
 
 Normal runs warn about missing and unknown rule entries; missing entries are backfilled in memory. `--strict` turns all configuration warnings into errors. Unknown parameters, invalid parameter types, duplicate list values, and values outside a parameter's declared choices are always errors. For example, `rust_padding.boundaries` accepts `functions`, `control-flow`, `let-runs`, `returns`, and `tail-expressions`. `--parse-config <PATH>` prints the resolved rule configuration as JSON.
 

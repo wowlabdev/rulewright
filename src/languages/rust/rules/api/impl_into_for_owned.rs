@@ -17,7 +17,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "impl Into in test",
         code: "#[cfg(test)]\nmod tests {\n    struct Foo;\n    impl Into<String> for Foo { fn into(self) -> String { String::new() } }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -30,7 +30,6 @@ crate::ast_rule!(
 
 fn check_impl_into_for_owned(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Impl>()
-        .filter(|item| !ctx.is_in_test(item))
         .filter_map(|item| {
             let ast::Type::PathType(path) = item.trait_()? else {
                 return None;

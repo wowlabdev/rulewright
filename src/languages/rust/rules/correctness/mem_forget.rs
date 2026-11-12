@@ -22,7 +22,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "forget in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn t() { std::mem::forget(String::new()); }\n}",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "unrelated forget function",
@@ -40,7 +40,6 @@ crate::ast_rule!(
 
 fn check_mem_forget(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::CallExpr>()
-        .filter(|call| !ctx.is_in_test(call))
         .filter_map(|call| {
             let ast::Expr::PathExpr(path_expr) = call.expr()? else {
                 return None;

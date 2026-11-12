@@ -27,7 +27,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "catch_unwind in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn t() { let _ = std::panic::catch_unwind(|| {}); }\n}",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "no catch_unwind",
@@ -44,22 +44,18 @@ crate::ast_rule!(
 );
 
 fn check_catch_unwind(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let calls = ctx
-        .nodes::<ast::CallExpr>()
-        .filter(|call| !ctx.is_in_test(call))
-        .filter_map(|call| {
-            let ast::Expr::PathExpr(path) = call.expr()? else {
-                return None;
-            };
-            let path = path.path()?;
+    let calls = ctx.nodes::<ast::CallExpr>().filter_map(|call| {
+        let ast::Expr::PathExpr(path) = call.expr()? else {
+            return None;
+        };
+        let path = path.path()?;
 
-            path.segment()
-                .and_then(|segment| segment.name_ref())
-                .filter(|name| name.text() == "catch_unwind")
-        });
+        path.segment()
+            .and_then(|segment| segment.name_ref())
+            .filter(|name| name.text() == "catch_unwind")
+    });
     let methods = ctx
         .nodes::<ast::MethodCallExpr>()
-        .filter(|call| !ctx.is_in_test(call))
         .filter_map(|call| call.name_ref().filter(|name| name.text() == "catch_unwind"));
 
     calls

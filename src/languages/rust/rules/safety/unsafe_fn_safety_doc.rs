@@ -43,7 +43,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "unsafe fn in test module",
         code: "#[cfg(test)]\nmod tests {\n    unsafe fn t() {}\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -58,7 +58,7 @@ fn check_unsafe_fn_safety_doc(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let unsafe_functions = ctx
         .nodes::<ast::Fn>()
         .filter(is_item_or_impl_fn)
-        .filter(|function| function.unsafe_token().is_some() && !ctx.is_in_test(function))
+        .filter(|function| function.unsafe_token().is_some())
         .filter(|function| !has_safety_heading(function));
 
     unsafe_functions

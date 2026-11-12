@@ -35,7 +35,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "bool params in test module",
         code: "#[cfg(test)]\nmod tests {\n  fn f(a: bool, b: bool) {}\n}",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "trait implementation preserves required signature",
@@ -59,7 +59,7 @@ fn check_bool_params(ctx: &AstCtx<'_>) -> Vec<Violation> {
             .get_usize("rust_bool_params", &BOOL_PARAMS_PARAMS[0], ctx.file.rel);
 
     ctx.nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function) && !is_trait_method(function))
+        .filter(|function| !is_trait_method(function))
         .filter_map(|function| {
             let bool_count = function
                 .param_list()?

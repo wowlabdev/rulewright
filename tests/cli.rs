@@ -5,6 +5,8 @@ use std::{fs, process::Command};
 use common::{command, initialize, root_package, run, text, write};
 use rulewright::RuleRegistry;
 
+const DBG_DESCRIPTION: &str = "Ban `dbg!()` macro calls in production code.";
+
 #[test]
 fn strict_accepts_absent_default_off_rules_but_still_checks_their_params() {
     let temp = tempfile::tempdir().unwrap();
@@ -157,10 +159,7 @@ fn json_findings_include_stable_locations_and_rule_metadata() {
     assert_eq!(finding["rule"], "rust_dbg");
     assert_eq!(finding["severity"], "medium");
     assert_eq!(finding["fixable"], true);
-    assert_eq!(
-        finding["description"],
-        "Ban `dbg!()` macro calls in production code."
-    );
+    assert_eq!(finding["description"], DBG_DESCRIPTION);
     assert!(
         finding["guidance"]
             .as_str()
@@ -492,7 +491,7 @@ fn llm_repeats_rule_guidance_beside_current_findings() {
 
     assert!(output.status.success(), "{output_text}");
     assert!(findings.contains("### rust_dbg (1 issues)"));
-    assert!(findings.contains("Ban `dbg!()` macro calls in production code."));
+    assert!(findings.contains(DBG_DESCRIPTION));
     assert!(findings.contains("temporary debugging"));
 }
 

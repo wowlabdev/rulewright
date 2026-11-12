@@ -18,7 +18,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "large array in test",
         code: "#[cfg(test)]\nmod tests {\n    fn t() { let _buf = [0u8; 8192]; }\n}",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "u64 element array type",
@@ -70,7 +70,6 @@ fn check_large_stack_array(ctx: &AstCtx<'_>) -> Vec<Violation> {
     );
     let type_arrays = ctx
         .nodes::<ast::ArrayType>()
-        .filter(|array| !ctx.is_in_test(array))
         .filter_map(|array| {
             let size = support::estimate_type_size(&ast::Type::ArrayType(array.clone()))?;
 
@@ -85,7 +84,7 @@ fn check_large_stack_array(ctx: &AstCtx<'_>) -> Vec<Violation> {
         });
     let repeat_arrays = ctx
         .nodes::<ast::ArrayExpr>()
-        .filter(|array| !ctx.is_in_test(array) && array.semicolon_token().is_some())
+        .filter(|array| array.semicolon_token().is_some())
         .filter_map(|array| {
             let mut expressions = array.exprs();
             let element = expressions.next()?;

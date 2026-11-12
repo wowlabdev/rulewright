@@ -51,9 +51,7 @@ const MIN_DELEGATE_SEGMENTS: usize = 2;
 
 fn check_proc_macro_thin_shim(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Fn>()
-        .filter(|function| {
-            !ctx.is_in_test(function) && is_proc_macro_fn(function) && !is_thin_shim(function)
-        })
+        .filter(|function| is_proc_macro_fn(function) && !is_thin_shim(function))
         .map(|function| {
             let name = function
                 .name()

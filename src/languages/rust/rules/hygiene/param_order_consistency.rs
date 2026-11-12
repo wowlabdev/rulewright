@@ -141,7 +141,7 @@ fn check_param_order_consistency(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
     for function in ctx
         .nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function) && !is_inside_trait(function))
+        .filter(|function| !is_inside_trait(function))
     {
         let params = param_pairs(&function);
 

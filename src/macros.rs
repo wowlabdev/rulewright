@@ -683,7 +683,7 @@ macro_rules! line_rule {
     };
 }
 
-/// Register a line rule that intentionally sees test-only source as well as production source.
+/// Register a line rule that also sees `EXAMPLES` constants and rule-registration macro calls.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! full_line_rule {

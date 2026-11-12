@@ -41,7 +41,6 @@ fn check_max_nesting(ctx: &AstCtx<'_>) -> Vec<Violation> {
             .get_usize("rust_max_nesting", &MAX_NESTING_PARAMS[0], ctx.file.rel);
 
     ctx.nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function))
         .filter_map(|function| {
             let body = function.body()?;
             let mut depth = NestingDepth::default();

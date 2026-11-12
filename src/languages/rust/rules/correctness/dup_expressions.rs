@@ -37,7 +37,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "dup in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn t(x: i32) { if x == x {} }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -50,7 +50,6 @@ crate::ast_rule!(
 
 fn check_dup_expressions(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::BinExpr>()
-        .filter(|expr| !ctx.is_in_test(expr))
         .filter_map(|expr| {
             let op = expr.op_kind()?;
 

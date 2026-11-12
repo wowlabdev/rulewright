@@ -49,7 +49,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "closure first in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn f(cb: impl Fn(), x: u32) {}\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -127,7 +127,7 @@ fn check_closure_param_position(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
     for function in ctx
         .nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function) && !is_inside_trait(function))
+        .filter(|function| !is_inside_trait(function))
     {
         let generics = closure_generics(&function);
         let parameters = function

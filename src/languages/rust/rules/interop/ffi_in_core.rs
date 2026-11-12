@@ -52,7 +52,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "export in test module",
         code: "#[cfg(test)]\nmod tests {\n    #[no_mangle]\n    pub extern \"C\" fn service_tick() {}\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -77,9 +77,7 @@ fn check_ffi_in_core(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
     let ffi_functions = ctx
         .nodes::<ast::Fn>()
-        .filter(|function| {
-            super::support::is_item_or_impl_fn(function) && !ctx.is_in_test(function)
-        })
+        .filter(super::support::is_item_or_impl_fn)
         .filter(|function| has_no_mangle(function) && super::is_extern_c(function.abi()));
     let mut violations: Vec<_> = ffi_functions
         .filter_map(|function| {
@@ -98,7 +96,6 @@ fn check_ffi_in_core(ctx: &AstCtx<'_>) -> Vec<Violation> {
         {
             let ffi_structs = ctx
                 .nodes::<ast::Struct>()
-            .filter(|item| !ctx.is_in_test(item))
             .filter(|item| has_repr_c(item) && has_raw_pointer_field(item));
 
             ffi_structs
@@ -159,6 +156,7 @@ mod tests {
     }
 
     #[gtest]
+    // #rw(fn: rust_similar_fns) each rule keeps its own example loop over its own fixture path
     fn examples() -> Result<()> {
         for ex in EXAMPLES {
             let violations = run_at(CORE_REL, ex.code);

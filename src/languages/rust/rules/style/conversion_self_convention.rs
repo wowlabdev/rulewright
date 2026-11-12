@@ -62,7 +62,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "wrong convention in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct S;\n    impl S {\n        fn as_str(self) {}\n    }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -75,7 +75,6 @@ crate::ast_rule!(
 
 fn check_conversion_self_convention(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function))
         .filter_map(|function| {
             let receiver = function.param_list()?.self_param()?;
 

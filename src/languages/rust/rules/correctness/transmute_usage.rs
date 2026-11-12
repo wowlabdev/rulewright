@@ -17,7 +17,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "transmute in test module",
         code: "#[cfg(test)]\nmod tests {\n    unsafe fn t() { let _x: u32 = std::mem::transmute(1.0f32); }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -30,7 +30,6 @@ crate::ast_rule!(
 
 fn check_transmute_usage(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::CallExpr>()
-        .filter(|call| !ctx.is_in_test(call))
         .filter_map(|call| {
             let ast::Expr::PathExpr(path_expr) = call.expr()? else {
                 return None;

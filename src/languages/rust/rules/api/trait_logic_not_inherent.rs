@@ -34,7 +34,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "logic in test module",
         code: "#[cfg(test)]\nmod tests {\n    trait Download { fn get(&self); }\n    struct Client;\n    impl Download for Client {\n        fn get(&self) {\n            let a = 1;\n            let b = a + 1;\n            let c = b + 1;\n            let _ = c;\n        }\n    }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -103,7 +103,6 @@ fn check_trait_logic_not_inherent(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let facts = collect_local_facts(ctx);
 
     ctx.nodes::<ast::Impl>()
-        .filter(|item| !ctx.is_in_test(item))
         .flat_map(|item| check_impl(ctx, &item, &facts, threshold))
         .collect()
 }

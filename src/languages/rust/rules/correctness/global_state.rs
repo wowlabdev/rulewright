@@ -45,7 +45,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "static atomic in test module",
         code: "#[cfg(test)]\nmod tests {\n    static COUNTER: AtomicUsize = AtomicUsize::new(0);\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -71,7 +71,6 @@ fn interior_mutable_name(ty: &ast::Type) -> Option<String> {
 fn check_global_state(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let statics = ctx
         .nodes::<ast::Static>()
-        .filter(|item| !ctx.is_in_test(item))
         .filter_map(|item| {
             let name = interior_mutable_name(&item.ty()?)?;
             let ident = item.name()?;
@@ -83,9 +82,7 @@ fn check_global_state(ctx: &AstCtx<'_>) -> Vec<Violation> {
                 ),
             ))
         });
-    let macro_calls = ctx
-        .nodes::<ast::MacroCall>()
-        .filter(|call| !ctx.is_in_test(call));
+    let macro_calls = ctx.nodes::<ast::MacroCall>();
     let thread_locals = macro_calls
         .filter(|call| {
             let name = call
