@@ -1,3 +1,5 @@
+//! Shared lexical helpers for line rules.
+
 #[cfg(test)]
 use googletest::prelude::*;
 

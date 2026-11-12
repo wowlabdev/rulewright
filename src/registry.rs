@@ -1,5 +1,7 @@
 // #rw(file: rust_inline_test_module_size) registry validation fixtures exercise private preflight paths
 
+//! Rule metadata, rule packs, and the deterministic rule registry.
+
 use std::collections::{BTreeMap, HashSet};
 
 use crate::{AstCtx, FileCtx, Fix, TomlCtx, Violation, languages::workspace::WorkspaceCtx};

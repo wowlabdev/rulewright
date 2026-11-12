@@ -437,7 +437,9 @@ ignore = []
 
 [rules.rust_module_docs]
 enabled = true
-ignore = []
+# Rule modules are documented by their registered description and justification;
+# trybuild inputs are compiler fixtures.
+ignore = ["src/languages/*/rules/**", "tests/ui/**"]
 
 [rules.rust_multiple_inherent_impl]
 enabled = true

@@ -1,3 +1,5 @@
+//! Applying line and tree fixes atomically with snapshot checks.
+
 use std::collections::BTreeMap;
 
 use crate::{

@@ -1,3 +1,5 @@
+//! Per-file rule context and violation records.
+
 use crate::path::Path;
 
 use super::config::Config;

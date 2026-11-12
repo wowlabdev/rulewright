@@ -9,7 +9,6 @@ mod file;
 mod glob;
 mod infra;
 mod languages;
-/// Machine-readable rule documentation for language-model consumers.
 pub mod llm;
 mod lock;
 mod macros;

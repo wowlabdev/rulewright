@@ -1,3 +1,5 @@
+//! Rule registration and rule-pack test macros.
+
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _declare_params {

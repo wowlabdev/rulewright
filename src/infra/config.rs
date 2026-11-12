@@ -1,5 +1,7 @@
 // #rw(file: rust_default_hasher, rust_missing_capacity, rust_vec_string_field) cold config-load path; hashing, preallocation, and boxed slices are not bottlenecks
 
+//! Loading, resolving, and validating `rulewright.toml`.
+
 use std::collections::{BTreeMap, HashSet};
 
 use crate::{

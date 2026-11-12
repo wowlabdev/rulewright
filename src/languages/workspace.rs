@@ -1,3 +1,5 @@
+//! Cross-file records extracted for workspace rules.
+
 use crate::checksum::{self, Checksum};
 use ra_ap_syntax::{
     AstNode, SyntaxKind,

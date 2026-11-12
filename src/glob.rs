@@ -1,3 +1,5 @@
+//! Workspace-relative glob validation and matching.
+
 #[cfg(test)]
 use googletest::prelude::*;
 

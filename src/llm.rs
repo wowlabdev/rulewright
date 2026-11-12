@@ -1,6 +1,8 @@
 // #rw(file: rust_println) --llm CLI output writes the document to stdout by design
 // #rw(file: rust_vec_string_field) rule-info structs are built then immediately rendered; boxing buys nothing
 
+//! Markdown rule catalog and findings for language-model consumers.
+
 use std::{collections::BTreeMap, process::ExitCode};
 
 use crate::markdown::{self, Doc, Table};

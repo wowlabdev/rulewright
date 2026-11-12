@@ -50,15 +50,15 @@ const EXAMPLES: &[Example] = &[
 
 crate::full_line_rule!(
     module_docs,
-    "Require `//!` crate docs at the top of Rust library roots.",
-    "Library crate docs are the public entry point for API navigation. Private module files are deliberately excluded.",
+    "Require `//!` docs at the top of Rust library roots and module files.",
+    "Crate and module docs are the entry points for navigating code: they say what a crate or module is for before a reader opens its items. Binary roots, build scripts, and test code are excluded.",
     Medium,
 );
 
 fn check_module_docs(ctx: &FileCtx<'_>) -> Vec<Violation> {
-    if ctx.path.file_name().and_then(|value| value.to_str()) != Some("lib.rs") {
+    let Some(kind) = documented_file_kind(ctx) else {
         return Vec::new();
-    }
+    };
 
     let mut in_attr = false;
 
@@ -86,11 +86,32 @@ fn check_module_docs(ctx: &FileCtx<'_>) -> Vec<Violation> {
         break;
     }
 
-    vec![violation(
-        ctx.rel,
-        1,
-        "Rust library crate root must begin with `//!` crate docs",
-    )]
+    vec![violation(ctx.rel, 1, kind)]
+}
+
+fn documented_file_kind(ctx: &FileCtx<'_>) -> Option<&'static str> {
+    let name = ctx.path.file_name().and_then(|value| value.to_str())?;
+    let in_bin_directory = ctx
+        .rel
+        .rsplit('/')
+        .nth(1)
+        .is_some_and(|parent| parent == "bin");
+
+    if name == "lib.rs" {
+        Some("Rust library crate root must begin with `//!` crate docs")
+    } else if ctx.test_only
+        || ctx
+            .path
+            .extension()
+            .is_none_or(|extension| extension != "rs")
+        || name == "main.rs"
+        || name == "build.rs"
+        || in_bin_directory
+    {
+        None
+    } else {
+        Some("Rust module file must begin with `//!` module docs")
+    }
 }
 
 #[cfg(test)]
@@ -121,12 +142,44 @@ mod tests {
     }
 
     #[gtest]
-    fn private_modules_binaries_build_scripts_and_non_rust_files_pass() -> Result<()> {
-        let rels = [
-            "test.rs",
-            "crates/demo/src/main.rs",
+    fn module_files_are_gated() -> Result<()> {
+        for rel in [
             "crates/demo/src/util.rs",
             "crates/demo/src/util/mod.rs",
+            "crates/demo/src/bin/tool/args.rs",
+        ] {
+            let violations = check_source_at(rel, "pub fn f() {}", check_module_docs);
+
+            verify_eq!(violations.len(), 1)?;
+            verify_that!(violations[0].message, contains_substring("module docs"))?;
+        }
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_only_module_files_pass() -> Result<()> {
+        let config = crate::Config::generate_default(&[]);
+        let lines = ["pub fn f() {}"];
+        let file = FileCtx {
+            test_only: true,
+            rel: "crates/demo/tests/support.rs",
+            path: crate::Path::new("crates/demo/tests/support.rs"),
+            package_name: None,
+            package_publishable: None,
+            lines: &lines,
+            contents: "pub fn f() {}",
+            config: &config,
+        };
+
+        verify_true!(check_module_docs(&file).is_empty())
+    }
+
+    #[gtest]
+    fn binaries_build_scripts_and_non_rust_files_pass() -> Result<()> {
+        let rels = [
+            "crates/demo/src/main.rs",
+            "crates/demo/src/bin/tool.rs",
             "crates/demo/build.rs",
             "crates/demo/src/template.txt",
         ];
