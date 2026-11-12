@@ -1,8 +1,11 @@
-#![expect(
-    clippy::assert_is_empty,
-    reason = "fixture assertions use explicit collection emptiness"
-)]
 #![cfg(feature = "rule-pack-testing")]
+#![cfg_attr(
+    feature = "rule-pack-testing",
+    expect(
+        clippy::assert_is_empty,
+        reason = "fixture assertions use explicit collection emptiness"
+    )
+)]
 
 use rulewright::{
     Config, DependencySection, DependencySource, Path, RuleCheck, RuleRegistry, Violation,
