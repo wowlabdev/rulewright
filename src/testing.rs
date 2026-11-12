@@ -191,7 +191,17 @@ pub fn check_source_toml_at(
     source: &str,
     check: fn(&TomlCtx<'_>) -> Vec<Violation>,
 ) -> Vec<Violation> {
-    let config = Config::generate_default(&[]);
+    check_source_toml_at_with_config(rel, source, &Config::generate_default(&[]), check)
+}
+
+/// Run a TOML-rule callback at an explicit path with explicit, already validated configuration.
+#[must_use]
+pub fn check_source_toml_at_with_config(
+    rel: &str,
+    source: &str,
+    config: &Config,
+    check: fn(&TomlCtx<'_>) -> Vec<Violation>,
+) -> Vec<Violation> {
     let lines: Vec<&str> = source.lines().collect();
     let file = FileCtx {
         test_only: false,
@@ -201,7 +211,7 @@ pub fn check_source_toml_at(
         package_publishable: None,
         lines: &lines,
         contents: source,
-        config: &config,
+        config,
     };
     let parse = taplo::parser::parse(source);
     let dom = parse.clone().into_dom();

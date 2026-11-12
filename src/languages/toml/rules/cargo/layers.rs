@@ -93,8 +93,11 @@ fn parse_sections(edge: &str, sections: &str) -> Result<Vec<DependencySection>, 
         .split(',')
         .map(|section| match section.trim() {
             "normal" => Ok(DependencySection::Normal),
+
             "build" => Ok(DependencySection::Build),
+
             "dev" => Ok(DependencySection::Dev),
+
             other => Err(format!(
                 "layer edge `{edge}` names unknown dependency kind `{other}`; use normal, build, or dev"
             )),

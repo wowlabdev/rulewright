@@ -70,7 +70,7 @@ Functions in different `|`-separated groups of one entry are not compared with e
 
 ## Cargo dependency policy
 
-Both Cargo rules are generic and cover normal, dev, build, and target-specific dependency tables, including table-form declarations and renamed dependencies.
+The Cargo dependency rules are generic and cover normal, dev, build, and target-specific dependency tables, including table-form declarations and renamed dependencies.
 
 ```toml
 [rules.toml_cargo_layers]
@@ -91,6 +91,18 @@ allow_patch = false
 ```
 
 Layer edges have the grammar `manifest-glob !> dependency-glob,...` (deny) or `manifest-glob => dependency-glob,...` (allow). The right side matches the dependency key, resolved renamed package name (including workspace inheritance), or a known destination manifest path. A deny edge reports every matching dependency. Allow edges list the complete set of dependencies, workspace packages and third-party crates alike, that a matching manifest may declare: the targets of all allow edges matching a manifest are combined, anything outside them is reported, and `manifest-glob =>` with no targets allows nothing. A manifest that no allow edge matches is not restricted by allow edges. A trailing `(normal, build, dev)` limits an edge to those dependency kinds; without it an edge covers all three. An empty edge list imposes no boundaries. Invalid edge syntax, kinds, and globs are configuration errors.
+
+`toml_cargo_workspace_dep_features` keeps `[workspace.dependencies]` to versions: `allowed_features` lists features any entry may enable, and each `crate_features` entry grants more to one dependency key:
+
+```toml
+[rules.toml_cargo_workspace_dep_features]
+enabled = true
+ignore = []
+allowed_features = ["derive", "std"]
+crate_features = ["toml: parse, serde"]
+```
+
+`toml_cargo_exact_versions` (off by default) requires every declared version requirement, in `[workspace.dependencies]` and in member dependency tables, to be an exact `=major.minor.patch`. Combined with allow edges in `toml_cargo_layers`, it states which third-party crates each manifest may use and at which version.
 
 Path policy checks declaration locations, including virtual roots' `[workspace.dependencies]` and `[patch.<source>]`. Workspace inheritance is checked at its root declaration. `allow_in` restricts manifests that may declare paths; `allow_patch` additionally permits path-bearing patches. `allow_outside_workspace` controls lexical absolute paths and `..` escapes relative to the declaring manifest. This check does not resolve filesystem symlinks or inspect ignored files; it is a manifest policy, not a filesystem sandbox. None of these rules supplies automatic fixes.
 

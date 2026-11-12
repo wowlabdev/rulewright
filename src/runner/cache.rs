@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-const CACHE_SCHEMA: u32 = 4;
+const CACHE_SCHEMA: u32 = 5;
 const BASE_DOMAIN: &[u8] = b"rulewright:analysis-base:v1";
 const RUST_CONTEXT_DOMAIN: &[u8] = b"rulewright:rust-context:v1";
 const TOML_CONTEXT_DOMAIN: &[u8] = b"rulewright:toml-context:v1";

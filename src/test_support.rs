@@ -134,6 +134,7 @@ pub(crate) fn check_workspace_member(
                     section: crate::DependencySection::Normal,
                     source: crate::DependencySource::Registry,
                     package: None,
+                    version: None,
                     name: (*name).to_owned(),
                     root: root.replace('-', "_"),
                     line: index + 1,

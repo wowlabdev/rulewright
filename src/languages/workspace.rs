@@ -51,6 +51,8 @@ pub struct DependencyRecord {
     pub source: DependencySource,
     /// Explicit renamed package identity, if supplied.
     pub package: Option<String>,
+    /// Declared version requirement, if any; inherited entries carry none.
+    pub version: Option<String>,
 }
 
 /// Cargo dependency kind, independent of its target condition.

@@ -772,6 +772,7 @@ allowed_features = [
     "derive",
     "std",
 ]
+crate_features = []
 
 [rules.toml_cargo_workspace_lints]
 enabled = true

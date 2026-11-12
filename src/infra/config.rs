@@ -653,6 +653,12 @@ impl Config {
                         {
                             errors.push(format!("rule `{rule}`: {error}"));
                         }
+                    } else if rule == "toml_cargo_workspace_dep_features"
+                        && param.name == "crate_features"
+                    {
+                        if let Err(error) = crate::languages::toml::rules::cargo::workspace_dep_features::validate_crate_features(&strings) {
+                            errors.push(format!("rule `{rule}`: {error}"));
+                        }
                     } else if rule == "toml_cargo_path_deps" && param.name == "allow_in" {
                         for pattern in strings {
                             if let Err(error) = crate::glob::validate(&pattern) {
