@@ -88,30 +88,23 @@ fn check_build_rs_external_tool(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .is_some_and(|dir| dir.ends_with("-sys") || dir.ends_with("_sys"));
     let mut violations = Vec::new();
 
-    for call in ctx
-        .nodes::<ast::CallExpr>()
-        .filter(|call| !ctx.is_in_test(call))
-    {
+    for call in ctx.nodes::<ast::CallExpr>() {
         check_command_new(ctx, &call, is_sys, &mut violations);
         check_binding_generator_path(ctx, &call, &mut violations);
     }
 
     violations.extend({
-        let unsafe_calls = ctx
-            .nodes::<ast::MethodCallExpr>()
-            .filter(|call| !ctx.is_in_test(call))
-            .filter(|call| {
-                call.name_ref()
-                    .is_some_and(|name| matches!(name.text().as_str(), "unwrap" | "expect"))
-                    && call.receiver().is_some_and(|expr| is_env_var_call(&expr))
-            });
+        let unsafe_calls = ctx.nodes::<ast::MethodCallExpr>().filter(|call| {
+            call.name_ref()
+                .is_some_and(|name| matches!(name.text().as_str(), "unwrap" | "expect"))
+                && call.receiver().is_some_and(|expr| is_env_var_call(&expr))
+        });
 
         unsafe_calls.map(|call| env_var_violation(ctx, &call))
     });
     violations.extend({
         let unsafe_tries = ctx
             .nodes::<ast::TryExpr>()
-            .filter(|expr| !ctx.is_in_test(expr))
             .filter(|expr| expr.expr().is_some_and(|expr| is_env_var_call(&expr)));
 
         unsafe_tries.map(|expr| env_var_violation(ctx, &expr))

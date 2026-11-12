@@ -129,6 +129,7 @@ mod tests {
     }
 
     #[gtest]
+    // #rw(fn: rust_similar_fns) each rule keeps its own example loop over its own fixture path
     fn examples() -> Result<()> {
         for ex in EXAMPLES {
             let violations = run_at(CORE_REL, ex.code);

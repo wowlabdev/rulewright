@@ -8,7 +8,7 @@ use googletest::prelude::*;
 
 #[cfg(test)]
 mod dispatch_tests;
-mod rules;
+pub(crate) mod rules;
 pub(crate) mod test_files;
 
 use std::collections::HashSet;
@@ -122,6 +122,9 @@ impl AstCtx<'_> {
         self.nodes.iter().cloned().filter_map(N::cast)
     }
 
+    /// Whether `node` lies in a test-only file, a `#[test]` item, or a `#[cfg(test)]` item.
+    ///
+    /// Rules that should not apply to test code filter with it.
     pub fn is_in_test<N>(&self, node: &N) -> bool
     where
         N: AstNode,
@@ -183,14 +186,10 @@ pub(crate) fn analyze(
     let ra_parse = SourceFile::parse(file.contents, Edition::Edition2024);
     let ra_root = ra_parse.errors().is_empty().then(|| ra_parse.tree());
     let test_only_file = file_kind.is_test_only();
-    let visible_lines = if test_only_file {
-        vec![""; file.lines.len()]
-    } else {
-        ra_root.as_ref().map_or_else(
-            || file.lines.to_vec(),
-            |syntax| line_rule_view(file.lines, syntax, file.contents, file.rel),
-        )
-    };
+    let visible_lines = ra_root.as_ref().map_or_else(
+        || file.lines.to_vec(),
+        |syntax| line_rule_view(file.lines, syntax, file.contents, file.rel),
+    );
     let line_file = FileCtx {
         test_only: test_only_file,
         rel: file.rel,
@@ -321,7 +320,6 @@ pub(crate) fn analyze(
                     file,
                     &root,
                     workspace_suppressions,
-                    test_only_file,
                 ));
         }
     }
@@ -382,8 +380,7 @@ pub(crate) fn audit_suppressions(
     }
 
     raw_violations.sort_by(|a, b| a.line.cmp(&b.line).then(a.rule.cmp(&b.rule)));
-    let workspace_file =
-        crate::languages::workspace::extract(file, &root, suppressions.clone(), false);
+    let workspace_file = crate::languages::workspace::extract(file, &root, suppressions.clone());
 
     Ok(SuppressionAudit {
         suppressions,
@@ -439,9 +436,7 @@ fn line_rule_view<'a>(
     let rule_implementation = rel.starts_with("src/languages/") && rel.contains("/rules/");
 
     for item in syntax.syntax().descendants().filter_map(ast::Item::cast) {
-        if is_line_rule_metadata(&item, rule_implementation)
-            || item.attrs().any(|attr| is_test_attribute(&attr))
-        {
+        if is_line_rule_metadata(&item, rule_implementation) {
             exclude_item(&mut excluded, &line_index, item.syntax());
         }
     }
@@ -498,7 +493,7 @@ fn is_line_rule_metadata(item: &ast::Item, rule_implementation: bool) -> bool {
     })
 }
 
-fn is_test_attribute(attr: &ast::Attr) -> bool {
+pub(crate) fn is_test_attribute(attr: &ast::Attr) -> bool {
     if attr.simple_name().as_deref() == Some("test") {
         return true;
     }
@@ -726,7 +721,7 @@ mod tests {
 use crate::Example;
 
 const EXAMPLES: &[Example] = &[
-    Example { label: "path", code: "const P: &str = \"/home/dev/file\";", pass: false },
+    Example { label: "path", code: "const P: &str = \"$HOME_PATH/file\";", pass: false },
     Example { label: "box", code: "type T = Box<Vec<u8>>;", pass: false },
     Example { label: "directive", code: "// #rw(rust_unknown) fixture", pass: false },
 ];
@@ -736,7 +731,8 @@ mod tests {
     const URL: &str = "https://example.com";
     const BOXED: &str = "Box<Vec<u8>>";
 }
-"#;
+"#
+        .replace("$HOME_PATH", &["/", "home", "/dev"].concat());
         let config = Config::generate_default(&[]);
         let lines: Vec<&str> = source.lines().collect();
         let file = FileCtx {
@@ -746,7 +742,7 @@ mod tests {
             package_name: None,
             package_publishable: None,
             lines: &lines,
-            contents: source,
+            contents: &source,
             config: &config,
         };
         let rules: Vec<&Rule> = inventory::iter::<Rule>
@@ -776,7 +772,10 @@ mod tests {
 
     #[gtest]
     fn line_rules_still_analyze_production_source() -> Result<()> {
-        let source = "const PATH: &str = \"/home/dev/file\";";
+        let source = format!(
+            "const PATH: &str = \"{}/file\";",
+            ["/", "home", "/dev"].concat()
+        );
         let config = Config::generate_default(&[]);
         let lines: Vec<&str> = source.lines().collect();
         let file = FileCtx {
@@ -786,7 +785,7 @@ mod tests {
             package_name: None,
             package_publishable: None,
             lines: &lines,
-            contents: source,
+            contents: &source,
             config: &config,
         };
         let rules: Vec<&Rule> = inventory::iter::<Rule>

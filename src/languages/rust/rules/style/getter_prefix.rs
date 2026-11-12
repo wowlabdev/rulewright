@@ -70,7 +70,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "getter in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct S;\n    impl S {\n        fn get_name(&self) {}\n    }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -93,8 +93,7 @@ const ALLOWED: &[&str] = &[
 fn check_getter_prefix(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Fn>()
         .filter(|function| {
-            !ctx.is_in_test(function)
-                && function.async_token().is_none()
+            function.async_token().is_none()
                 && !is_trait_impl_method(function)
                 && function.param_list().is_some_and(|params| {
                     params.self_param().is_some() && params.params().next().is_none()

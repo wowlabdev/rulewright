@@ -1366,7 +1366,7 @@ mod tests {
     }
 
     #[gtest]
-    fn package_publishability_reaches_downstream_api_rules() -> Result<()> {
+    fn api_rules_check_published_and_unpublished_packages() -> Result<()> {
         let directory = crate::temporary::Directory::new().or_fail()?;
         let private_root = directory.path().join("private");
         let publishable_root = directory.path().join("publishable");
@@ -1390,7 +1390,7 @@ mod tests {
             "rust_non_exhaustive_on_public".to_owned(),
             "rust_doc_errors_section".to_owned(),
         ];
-        let mut packages = [
+        let packages = [
             PackageRoot {
                 name: "private".to_owned(),
                 root: private_root,
@@ -1418,52 +1418,23 @@ mod tests {
             dirty: false,
         };
         let (violations, _, _, _) = collect_violations(&ctx, false, None).or_fail()?;
-
-        verify_eq!(violations.len(), 4)?;
-
-        verify_true!(
-            violations
-                .iter()
-                .all(|violation| violation.rel == "publishable/src/lib.rs")
-        )?;
-
-        let rules = violations
+        let found = violations
             .iter()
-            .map(Violation::rule_name)
+            .map(|violation| (violation.rel.as_str(), violation.rule_name()))
+            .collect::<Vec<_>>();
+        let expected = ["private/src/lib.rs", "publishable/src/lib.rs"]
+            .into_iter()
+            .flat_map(|rel| {
+                [
+                    (rel, "rust_non_exhaustive_on_public"),
+                    (rel, "rust_pub_api_docs"),
+                    (rel, "rust_pub_api_docs"),
+                    (rel, "rust_doc_errors_section"),
+                ]
+            })
             .collect::<Vec<_>>();
 
-        verify_eq!(
-            rules,
-            [
-                "rust_non_exhaustive_on_public",
-                "rust_pub_api_docs",
-                "rust_pub_api_docs",
-                "rust_doc_errors_section",
-            ]
-        )?;
-
-        packages[0].publishable = true;
-        packages[1].publishable = false;
-
-        let ctx = RunCtx {
-            registry: &registry,
-            rule_filter: &rule_filter,
-            package_filter: &[],
-            packages: &packages,
-            config: &config,
-            root: directory.path(),
-            workspace_root: directory.path(),
-            quiet: true,
-            dirty: false,
-        };
-        let (violations, _, _, _) = collect_violations(&ctx, false, None).or_fail()?;
-
-        verify_eq!(violations.len(), 4)?;
-        verify_true!(
-            violations
-                .iter()
-                .all(|violation| violation.rel == "private/src/lib.rs")
-        )
+        verify_eq!(found, expected)
     }
 
     #[gtest]

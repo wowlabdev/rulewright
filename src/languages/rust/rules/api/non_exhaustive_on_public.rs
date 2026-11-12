@@ -34,15 +34,11 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     non_exhaustive_on_public,
     "Flag `pub` enums without `#[non_exhaustive]` when downstream variants should remain extensible.",
-    "Adding a variant can break downstream exhaustive matches. Use `#[non_exhaustive]` for externally reachable enums in publishable packages whose variant set may grow; packages that explicitly set `publish = false` are skipped. Keep the rule disabled or scoped away for private-module enums and deliberately closed protocol, state-machine, or schema vocabularies. Rulewright recognizes syntax-level `pub` but does not resolve re-export visibility.",
+    "Adding a variant can break downstream exhaustive matches. Use `#[non_exhaustive]` for externally reachable enums whose variant set may grow, including enums used by other packages of the same workspace. Keep the rule disabled or scoped away for private-module enums and deliberately closed protocol, state-machine, or schema vocabularies. Rulewright recognizes syntax-level `pub` but does not resolve re-export visibility.",
     Medium,
 );
 
 fn check_non_exhaustive_on_public(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    if ctx.file.is_explicitly_non_publishable() {
-        return Vec::new();
-    }
-
     let public_enums = ctx
         .nodes::<ast::Enum>()
         .filter(|item| !ctx.is_in_test(item))
@@ -74,7 +70,7 @@ crate::rulewright_ast_test!(check_non_exhaustive_on_public, {
     crate::example_tests!(EXAMPLES, check_non_exhaustive_on_public);
 
     #[test]
-    fn package_publishability_controls_downstream_enum_stability() {
+    fn unpublished_packages_are_checked() {
         let source = "pub enum Status { Ready, Waiting }";
 
         assert_eq!(
@@ -86,13 +82,14 @@ crate::rulewright_ast_test!(check_non_exhaustive_on_public, {
             .len(),
             1
         );
-        assert!(
+        assert_eq!(
             crate::test_support::check_source_ast_publishability(
                 source,
                 false,
-                check_non_exhaustive_on_public,
+                check_non_exhaustive_on_public
             )
-            .is_empty()
+            .len(),
+            1
         );
         assert_eq!(
             crate::test_support::check_source_ast_publishability(

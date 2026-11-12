@@ -1,6 +1,6 @@
 # rulewright — Rust source code linter
 
-Configured rules for the target Rust workspace. Runs beyond what clippy and rustfmt cover.
+Built-in rules with the defaults written by `rulewright --init`. Runs beyond what clippy and rustfmt cover.
 
 ## Alignment guide
 
@@ -57,7 +57,7 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_aligned                       | low      | rust-line      | yes     | yes     | Enforce column alignment in regions marked with `// #rw:aligned`.                                                                                                               |
 | rust_alloc_in_loop                 | medium   | rust-ast       | no      | no      | Flag loop-invariant `format!()` and `.to_string()` work repeated inside loops.                                                                                                  |
 | rust_allow_reason                  | low      | rust-line      | yes     | no      | Require a `reason = "..."` or comment explaining why `#[allow(...)]`/`#[expect(...)]` is used.                                                                                  |
-| rust_ambient_syscall               | medium   | rust-ast       | no      | no      | Flag ambient I/O, clock, env, and entropy calls in library code.                                                                                                                |
+| rust_ambient_syscall               | medium   | rust-ast       | yes     | no      | Flag ambient I/O, clock, env, thread, process, and entropy calls outside test code.                                                                                             |
 | rust_ambiguous_unicode             | high     | rust-line      | yes     | no      | Ban Unicode characters visually confusable with ASCII (homoglyphs).                                                                                                             |
 | rust_asref_bound_on_type           | low      | rust-ast       | yes     | no      | Flag struct/enum generic parameters bounded by `AsRef<…>` and stored in fields.                                                                                                 |
 | rust_assert_side_effects           | high     | rust-ast       | yes     | no      | Ban compound assignments (`+=`, `-=`) inside `debug_assert!` macros.                                                                                                            |
@@ -78,26 +78,26 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_cfg_not_test                  | medium   | rust-line      | yes     | no      | Flag `#[cfg(not(test))]` — use dependency injection or feature flags instead.                                                                                                   |
 | rust_closure_dense_method_chain    | medium   | rust-ast       | yes     | no      | Flag method-call chains that are very long or contain many inline closure arguments.                                                                                            |
 | rust_closure_param_position        | low      | rust-ast       | yes     | no      | Flag closure parameters that are not last, and fns taking more than one closure.                                                                                                |
-| rust_collection_new_in_loop        | medium   | rust-ast       | no      | no      | Flag collection constructors (`Vec::new()`, `vec![]`, `with_capacity`, ...) bound via `let` inside loops.                                                                       |
+| rust_collection_new_in_loop        | medium   | rust-ast       | yes     | no      | Flag collection constructors (`Vec::new()`, `vec![]`, `with_capacity`, ...) bound via `let` inside loops.                                                                       |
 | rust_collection_trait_completeness | low      | rust-ast       | yes     | no      | Require collection trait counterparts: `iter()` needs `impl IntoIterator for &T`, `iter_mut()` needs `impl IntoIterator for &mut T`, and `FromIterator`/`Extend` come in pairs. |
 | rust_comment_space                 | low      | rust-line      | yes     | yes     | Require a space after `//` in comments (`//bad` -> `// good`).                                                                                                                  |
 | rust_commented_code                | low      | rust-line      | yes     | no      | Detect blocks of commented-out code (2+ consecutive lines).                                                                                                                     |
-| rust_concrete_io_param             | low      | rust-ast       | no      | no      | Flag fn parameters typed as concrete I/O handles like `File` or `TcpStream`.                                                                                                    |
-| rust_conversion_self_convention    | medium   | rust-ast       | no      | no      | Enforce C-CONV receivers: `as_`/`to_` methods borrow (`&self`), `into_` methods consume (`self`).                                                                               |
+| rust_concrete_io_param             | low      | rust-ast       | yes     | no      | Flag fn parameters typed as concrete I/O handles like `File` or `TcpStream`.                                                                                                    |
+| rust_conversion_self_convention    | medium   | rust-ast       | yes     | no      | Enforce C-CONV receivers: `as_`/`to_` methods borrow (`&self`), `into_` methods consume (`self`); `to_` may consume a `Copy` type declared in the same file.                    |
 | rust_ctor_new                      | low      | rust-ast       | yes     | no      | Flag public structs with `Default` but no public constructor (C-CTOR).                                                                                                          |
-| rust_ctor_param_count              | medium   | rust-ast       | no      | no      | Flag constructors with too many parameters or runs of identically-typed primitives — cascade construction through helper types.                                                 |
-| rust_cyclomatic_complexity         | medium   | rust-ast       | no      | no      | Flag functions with structural control-flow complexity above the configured threshold.                                                                                          |
+| rust_ctor_param_count              | medium   | rust-ast       | yes     | no      | Flag constructors with too many parameters or runs of identically-typed primitives — cascade construction through helper types.                                                 |
+| rust_cyclomatic_complexity         | medium   | rust-ast       | yes     | no      | Flag functions with structural control-flow complexity above the configured threshold.                                                                                          |
 | rust_dbg                           | medium   | rust-ast       | yes     | yes     | Ban `dbg!()` macro calls in production code.                                                                                                                                    |
 | rust_deep_exit                     | high     | rust-ast       | yes     | no      | Ban `std::process::exit()` in library code.                                                                                                                                     |
 | rust_deeply_nested_types           | low      | rust-ast       | yes     | no      | Flag type annotations with > 3 levels of generic nesting.                                                                                                                       |
-| rust_default_hasher                | low      | rust-ast       | no      | no      | Flag std `HashMap`/`HashSet` types and constructors that use the default SipHash hasher.                                                                                        |
+| rust_default_hasher                | low      | rust-ast       | yes     | no      | Flag std `HashMap`/`HashSet` types and constructors that use the default SipHash hasher.                                                                                        |
 | rust_deny_warnings                 | medium   | rust-line      | yes     | yes     | Ban `#![deny(warnings)]` — breaks on compiler upgrades.                                                                                                                         |
 | rust_derive_order                  | low      | rust-ast       | yes     | yes     | Require traits inside derive attributes to be sorted alphabetically.                                                                                                            |
 | rust_dll_boundary_types            | high     | rust-ast       | yes     | no      | Flag `String`, `Vec`, `Box`, `dyn` objects, `TypeId`, and `Instant` in `extern "C"` signatures.                                                                                 |
 | rust_doc_comment_period            | low      | rust-line      | yes     | no      | Require doc comments to end with proper punctuation.                                                                                                                            |
 | rust_doc_errors_section            | medium   | rust-ast       | yes     | no      | Require a `# Errors` section on documented pub fns returning `Result`.                                                                                                          |
 | rust_doc_inline_reexport           | low      | rust-line      | yes     | no      | Require `#[doc(inline)]` on local re-exports and forbid it on external ones.                                                                                                    |
-| rust_doc_panics_section            | medium   | rust-ast       | no      | no      | Require a `# Panics` section on documented pub fns that can panic.                                                                                                              |
+| rust_doc_panics_section            | medium   | rust-ast       | yes     | no      | Require a `# Panics` section on documented pub fns that can panic.                                                                                                              |
 | rust_doc_param_table               | low      | rust-line      | yes     | no      | Ban `# Parameters`/`# Arguments`/`# Params` sections in doc comments.                                                                                                           |
 | rust_drop_panic                    | high     | rust-ast       | yes     | no      | Ban `panic!`, `.unwrap()`, `.expect()` inside `impl Drop`.                                                                                                                      |
 | rust_dup_expressions               | high     | rust-ast       | yes     | no      | Flag identical sub-expressions like `x == x`, `a - a`, `b && b`.                                                                                                                |
@@ -114,20 +114,20 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_ffi_crate_naming              | low      | rust-line      | yes     | no      | Require `-ffi` naming for crates exporting C symbols and `-sys` naming for crates linking foreign C items.                                                                      |
 | rust_ffi_in_core                   | medium   | rust-ast       | yes     | no      | Flag `#[no_mangle] extern "C"` exports and `#[repr(C)]` raw-pointer structs in non-FFI crates.                                                                                  |
 | rust_ffi_thin_glue                 | low      | rust-ast       | yes     | no      | Flag `extern "C"` functions in `*-ffi` crates whose body exceeds the line threshold.                                                                                            |
-| rust_first_doc_sentence            | low      | rust-line      | no      | no      | Require the first doc sentence to end on the first line within a word budget.                                                                                                   |
+| rust_first_doc_sentence            | low      | rust-line      | yes     | no      | Require the first doc sentence to end on the first line within a word budget.                                                                                                   |
 | rust_floating_point_eq             | high     | rust-ast       | yes     | no      | Flag direct nonzero `==`/`!=` comparison on `f32`/`f64` values for review.                                                                                                      |
 | rust_foreign_reexports             | medium   | rust-ast       | yes     | no      | Flag `pub use` re-exports of items from foreign crates.                                                                                                                         |
 | rust_from_instead_of_as            | low      | rust-ast       | yes     | yes     | Flag `as` casts on suffixed literals — use `From`/`Into` instead.                                                                                                               |
 | rust_future_send_assert            | low      | rust-ast       | yes     | no      | Require a compile-time `Send` assertion for every explicit `impl Future` in the same file.                                                                                      |
-| rust_getter_prefix                 | low      | rust-ast       | no      | no      | Flag receiver-only accessor methods named `get_something` — Rust getters are named after the field (C-GETTER).                                                                  |
+| rust_getter_prefix                 | low      | rust-ast       | yes     | no      | Flag receiver-only accessor methods named `get_something` — Rust getters are named after the field (C-GETTER).                                                                  |
 | rust_glob_reexport                 | medium   | rust-ast       | yes     | no      | Flag `pub use foo::*` glob re-exports outside platform-cfg'd HAL forwarding.                                                                                                    |
 | rust_global_state                  | medium   | rust-ast       | yes     | no      | Flag `static` items with interior mutability and all `thread_local!` state.                                                                                                     |
 | rust_hardcoded_url                 | medium   | rust-ast       | yes     | no      | Flag URL-valued string literals compiled into source code (should use config/env).                                                                                              |
 | rust_impl_into_for_owned           | medium   | rust-ast       | yes     | no      | Flag `impl Into<T> for X` — implement `From<X> for T` instead (gives Into for free).                                                                                            |
-| rust_impl_member_order             | medium   | rust-ast       | no      | yes     | Require inherent impl members to follow the canonical category and visibility order.                                                                                            |
+| rust_impl_member_order             | medium   | rust-ast       | yes     | yes     | Require inherent impl members to follow the canonical category and visibility order.                                                                                            |
 | rust_infallible_from_weak          | medium   | rust-ast       | yes     | no      | Flag `impl From<weak>` next to fallible construction of the same type.                                                                                                          |
 | rust_inherent_before_trait_impl    | low      | rust-ast       | yes     | no      | Require an inherent impl to precede trait impls for the same local type.                                                                                                        |
-| rust_inline_test_module_size       | low      | rust-ast       | yes     | no      | Flag inline `#[cfg(test)] mod` blocks exceeding the configured nonblank-line threshold.                                                                                         |
+| rust_inline_test_module_size       | low      | rust-ast       | yes     | no      | Flag inline `#[cfg(test)] mod` bodies exceeding the configured nonblank-line threshold; out-of-line `mod tests;` declarations are allowed.                                      |
 | rust_large_async_local             | medium   | rust-ast       | yes     | no      | Flag by-value `[T; N]` locals and parameters over threshold bytes inside async fns and blocks.                                                                                  |
 | rust_large_enum_variant            | medium   | rust-ast       | yes     | no      | Flag enum variants that are much larger than others (should Box the large variant).                                                                                             |
 | rust_large_fn_params               | medium   | rust-ast       | yes     | no      | Flag functions with > threshold parameters.                                                                                                                                     |
@@ -151,32 +151,32 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_missing_debug                 | low      | rust-ast       | yes     | yes     | Require `#[derive(Debug)]` on public structs and enums.                                                                                                                         |
 | rust_missing_error_context         | medium   | rust-ast       | yes     | no      | Flag `.map_err(\|_\| ...)` that discards the original error.                                                                                                                    |
 | rust_mod_order                     | low      | rust-ast       | yes     | yes     | Require contiguous module-declaration blocks to be alphabetically sorted.                                                                                                       |
-| rust_module_docs                   | medium   | rust-line      | yes     | no      | Require `//!` crate docs at the top of Rust library roots.                                                                                                                      |
+| rust_module_docs                   | medium   | rust-line      | yes     | no      | Require `//!` docs at the top of Rust library roots and module files.                                                                                                           |
 | rust_multiple_inherent_impl        | low      | rust-ast       | yes     | no      | Flag multiple `impl Foo` blocks for the same type in one file.                                                                                                                  |
-| rust_mutex_in_async                | high     | rust-ast       | yes     | no      | Flag `std::sync::Mutex` usage in async functions under an async-mutex-only policy.                                                                                              |
+| rust_mutex_in_async                | high     | rust-ast       | no      | no      | Flag `std::sync::Mutex` usage in async functions under an async-mutex-only policy.                                                                                              |
 | rust_native_escape_hatches         | low      | rust-ast       | yes     | no      | Require `unsafe fn from_native`, `into_native`, and `to_native` on public raw-pointer wrapper structs.                                                                          |
 | rust_nested_smart_pointers         | medium   | rust-ast       | yes     | no      | Flag directly nested heap pointers (`Arc<Box<T>>`, `Rc<Rc<T>>`, ...) plus `Arc<Vec<T>>`/`Arc<String>`.                                                                          |
 | rust_newtype_pub_field             | medium   | rust-ast       | yes     | no      | Flag public weak-typed newtype fields only when the type also exposes fallible construction.                                                                                    |
 | rust_no_prelude                    | high     | rust-line      | yes     | no      | Ban `prelude` module declarations and `prelude.rs`/`prelude/mod.rs` files.                                                                                                      |
-| rust_non_exhaustive_on_public      | medium   | rust-ast       | no      | no      | Flag `pub` enums without `#[non_exhaustive]` when downstream variants should remain extensible.                                                                                 |
+| rust_non_exhaustive_on_public      | medium   | rust-ast       | yes     | no      | Flag `pub` enums without `#[non_exhaustive]` when downstream variants should remain extensible.                                                                                 |
 | rust_nonsend_across_await          | medium   | rust-ast       | yes     | no      | Flag `Rc`/`RefCell` bindings in async code when an `.await` occurs later in the same block.                                                                                     |
 | rust_ok_or_eager                   | low      | rust-ast       | yes     | yes     | Flag `.ok_or()`/`.unwrap_or()` with eagerly evaluated arguments.                                                                                                                |
-| rust_owned_ref_param               | medium   | rust-ast       | no      | no      | Flag fn parameters typed `&String`, `&PathBuf`, `&Vec<T>`, `&OsString`.                                                                                                         |
+| rust_owned_ref_param               | medium   | rust-ast       | yes     | no      | Flag fn parameters typed `&String`, `&PathBuf`, `&Vec<T>`, `&OsString`.                                                                                                         |
 | rust_padding                       | low      | rust-ast       | yes     | yes     | Require configurable blank-line boundaries between functions and distinct statement groups.                                                                                     |
 | rust_panic                         | high     | rust-ast       | yes     | no      | Ban `unimplemented!()`, `todo!()`, and message-less `panic!()` in library code.                                                                                                 |
-| rust_panic_in_result_fn            | high     | rust-ast       | no      | no      | Ban `panic!`, `.unwrap()`, `.expect()` in functions returning `Result`.                                                                                                         |
+| rust_panic_in_result_fn            | high     | rust-ast       | yes     | no      | Ban `panic!`, `.unwrap()`, `.expect()` in functions returning `Result`.                                                                                                         |
 | rust_panic_message                 | medium   | rust-ast       | yes     | no      | Require a message on `unreachable!` and `debug_assert!*`.                                                                                                                       |
 | rust_param_clump                   | low      | rust-workspace | yes     | no      | Find maximal parameter groups repeated across functions; full-workspace runs are authoritative.                                                                                 |
-| rust_param_order_consistency       | low      | rust-ast       | yes     | no      | Flag related fns whose shared parameters appear in a different order.                                                                                                           |
-| rust_println                       | medium   | rust-ast       | no      | no      | Ban `println!`/`eprintln!`/`print!`/`eprint!` outside test code.                                                                                                                |
+| rust_param_order_consistency       | low      | rust-ast       | no      | no      | Flag related fns whose shared parameters appear in a different order.                                                                                                           |
+| rust_println                       | medium   | rust-ast       | yes     | no      | Ban `println!`/`eprintln!`/`print!`/`eprint!` outside test code.                                                                                                                |
 | rust_proc_macro_thin_shim          | low      | rust-ast       | yes     | no      | Require proc-macro entry points to be thin `impl_crate::name(arg.into()).into()` shims.                                                                                         |
-| rust_pub_api_docs                  | low      | rust-ast       | no      | no      | Require doc comments on public items.                                                                                                                                           |
-| rust_pub_api_foreign_types         | low      | rust-ast       | no      | no      | Flag foreign crate types leaked through `pub` fn signatures, fields, and type aliases.                                                                                          |
+| rust_pub_api_docs                  | low      | rust-ast       | yes     | no      | Require doc comments on public items.                                                                                                                                           |
+| rust_pub_api_foreign_types         | low      | rust-ast       | yes     | no      | Flag foreign crate types leaked through `pub` fn signatures, fields, and type aliases.                                                                                          |
 | rust_pub_api_generic_nesting       | low      | rust-ast       | yes     | no      | Flag pub fn signatures, pub struct fields, and pub type aliases nesting one local generic instantiation inside another (e.g. `Service<Backend<Store>>`).                        |
 | rust_pub_api_smart_pointers        | medium   | rust-ast       | yes     | no      | Flag `Rc`/`Arc`/`Box`/`RefCell`/`Cell`/`Mutex`/`RwLock` as the outermost type of pub fn params, returns, and pub struct fields.                                                 |
 | rust_pub_use_grouping              | low      | rust-ast       | yes     | yes     | Require public re-exports from the same origin to be adjacent.                                                                                                                  |
 | rust_pub_use_position              | low      | rust-ast       | yes     | yes     | Require top-level public imports to follow plain imports in a separate block.                                                                                                   |
-| rust_public_error_enum             | medium   | rust-ast       | no      | no      | Flag `pub enum` named `*Error`/`*ErrorKind` — expose a situation-specific error struct with a private kind enum instead.                                                        |
+| rust_public_error_enum             | medium   | rust-ast       | yes     | no      | Flag `pub enum` named `*Error`/`*ErrorKind` — expose a situation-specific error struct with a private kind enum instead.                                                        |
 | rust_range_over_rangebounds        | low      | rust-ast       | yes     | no      | Flag `pub` fn parameters typed `Range<T>` — accept `impl RangeBounds<T>` instead.                                                                                               |
 | rust_recursive_fn                  | high     | rust-ast       | yes     | no      | Flag direct self-recursion (stack overflow risk, especially in WASM).                                                                                                           |
 | rust_redundant_field_names         | low      | rust-ast       | yes     | yes     | Flag `Foo { x: x }` — use shorthand `Foo { x }` instead.                                                                                                                        |
@@ -186,7 +186,7 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_single_item_path              | medium   | rust-ast       | yes     | no      | Flag `pub use` re-exports that duplicate paths already public through a sibling `pub mod`.                                                                                      |
 | rust_sorted                        | low      | rust-line      | yes     | yes     | Enforce ordering in contiguous regions marked with `#rw:sorted(asc)` or `#rw:sorted(desc)`.                                                                                     |
 | rust_static_mut                    | high     | rust-line      | yes     | no      | Ban `static mut` declarations — use `AtomicT`, `Mutex`, or `OnceLock`.                                                                                                          |
-| rust_string_error                  | medium   | rust-ast       | no      | no      | Reject `String` and `&str` as function error types.                                                                                                                             |
+| rust_string_error                  | medium   | rust-ast       | yes     | no      | Reject `String` and `&str` as function error types.                                                                                                                             |
 | rust_style                         | low      | rust-line      | yes     | yes     | Enforce no trailing whitespace, no tabs, no CRLF line endings.                                                                                                                  |
 | rust_subtractive_feature_cfg       | medium   | rust-ast       | yes     | no      | Flag `#[cfg(not(feature = "..."))]` on `pub` items — features must be additive.                                                                                                 |
 | rust_tautological_assert           | low      | rust-ast       | yes     | no      | Flag test asserts comparing a constant against a literal (or literal vs literal).                                                                                               |
@@ -204,9 +204,9 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | rust_unsafe_fn_safety_doc          | high     | rust-ast       | yes     | no      | Require a `# Safety` doc section or `// SAFETY:` comment on every `unsafe fn`.                                                                                                  |
 | rust_unsafe_impl_send              | high     | rust-line      | yes     | no      | Flag `unsafe impl Send`/`Sync` without a `// SAFETY:` comment, and any generic (blanket) form.                                                                                  |
 | rust_unsafe_without_ub_surface     | low      | rust-ast       | yes     | no      | Flag `unsafe fn` with no raw-pointer surface and no unsafe operations in the body.                                                                                              |
-| rust_unwrap_in_lib                 | medium   | rust-ast       | no      | no      | Ban `.unwrap()` in library code.                                                                                                                                                |
+| rust_unwrap_in_lib                 | medium   | rust-ast       | yes     | no      | Ban `.unwrap()` in library code.                                                                                                                                                |
 | rust_vec_init_then_push            | low      | rust-ast       | yes     | no      | Flag `Vec::new()` immediately followed by `.push()` calls (use `vec![]` or `with_capacity`).                                                                                    |
-| rust_vec_string_field              | low      | rust-ast       | no      | no      | Flag non-pub struct fields typed `Vec<String>` or `Vec<Vec<T>>`.                                                                                                                |
+| rust_vec_string_field              | low      | rust-ast       | yes     | no      | Flag non-pub struct fields typed `Vec<String>` or `Vec<Vec<T>>`.                                                                                                                |
 | rust_weasel_words                  | medium   | rust-ast       | yes     | no      | Flag type definitions whose name contains a weasel word like `Manager`, `Service`, or `Factory`.                                                                                |
 | rust_where_clauses                 | low      | rust-ast       | yes     | no      | Require type-parameter trait bounds to use where clauses.                                                                                                                       |
 | rust_wildcard_imports              | medium   | rust-ast       | yes     | no      | Ban `use foo::*` outside tests and preludes.                                                                                                                                    |
@@ -214,11 +214,12 @@ Rule names and a reason after `)` are required. Missing either is a violation.
 | toml_ambiguous_unicode             | high     | toml           | yes     | no      | Ban Unicode characters in TOML that are visually confusable with ASCII.                                                                                                         |
 | toml_bidirectional_unicode         | high     | toml           | yes     | no      | Ban Unicode bidi control characters in TOML.                                                                                                                                    |
 | toml_cargo_edition                 | medium   | toml           | yes     | no      | Require the workspace and non-inheriting members to target at least the configured Rust edition, with the matching virtual-workspace resolver.                                  |
+| toml_cargo_exact_versions          | medium   | toml           | no      | no      | Require every declared dependency version to be an exact `=major.minor.patch` requirement.                                                                                      |
 | toml_cargo_feature_names           | low      | toml           | yes     | no      | Flag Cargo feature names with use-/with- prefixes or -support suffixes.                                                                                                         |
 | toml_cargo_feature_no_std          | medium   | toml           | yes     | no      | Ban subtractive no-std Cargo features; provide an additive std feature instead.                                                                                                 |
-| toml_cargo_layers                  | high     | workspace      | yes     | no      | Reject dependency edges configured as manifest-glob !> package-glob,package-glob.                                                                                               |
+| toml_cargo_layers                  | high     | workspace      | no      | no      | Enforce dependency edges: `manifest-glob !> glob,...` forbids, `manifest-glob => glob,...` lists everything allowed.                                                            |
 | toml_cargo_msrv                    | low      | toml           | yes     | no      | Require the workspace to declare rust-version and members to inherit it instead of overriding it.                                                                               |
-| toml_cargo_path_deps               | high     | workspace      | yes     | no      | Restrict path dependency declarations and patches to approved manifests and workspace-local paths.                                                                              |
+| toml_cargo_path_deps               | high     | workspace      | no      | no      | Restrict path dependency declarations and patches to approved manifests and workspace-local paths.                                                                              |
 | toml_cargo_unused_deps             | medium   | workspace      | yes     | no      | Flag workspace-member dependencies that are never referenced by any Rust compile target.                                                                                        |
 | toml_cargo_workspace_dep_features  | low      | toml           | yes     | no      | Flag [workspace.dependencies] entries that enable features outside the allowlist.                                                                                               |
 | toml_cargo_workspace_lints         | medium   | toml           | yes     | no      | Require the workspace to enable the standard rust/clippy lint set and members to inherit it via `[lints] workspace = true`.                                                     |
@@ -573,15 +574,15 @@ _deny attr_
 
 ### rust_ambient_syscall
 
-Flag ambient I/O, clock, env, and entropy calls in library code.
+Flag ambient I/O, clock, env, thread, process, and entropy calls outside test code.
 
-> Syscalls called ambiently cannot be mocked, making edge cases untestable — inject them through an abstraction.
+> Syscalls called ambiently cannot be mocked, making edge cases untestable — inject them through an abstraction. Calls are matched by path, following `use` imports and aliases in the same file; method calls, re-exports, and glob imports are not resolved. The rule applies to libraries and binaries alike: scope it to library code with `only` or `ignore` (for example `ignore = ["**/src/main.rs", "**/src/bin/**"]`).
 
 |          |          |
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -643,7 +644,61 @@ use rand::thread_rng;
 fn roll() { let _ = thread_rng(); }
 ```
 
+_aliased clock import_
+
+```rust
+use std::time::Instant as Clock;
+fn stamp() { let _ = Clock::now(); }
+```
+
+_aliased fs function_
+
+```rust
+use std::fs::read as load;
+fn cfg() { let _ = load("cfg.toml"); }
+```
+
+_thread spawn via module import_
+
+```rust
+use std::thread;
+fn run() { let _ = thread::spawn(|| {}); }
+```
+
+_thread sleep_
+
+```rust
+fn wait() { std::thread::sleep(std::time::Duration::from_millis(1)); }
+```
+
+_process spawn_
+
+```rust
+use std::process::Command;
+fn run() { let _ = Command::new("ls"); }
+```
+
+_stdin and args_
+
+```rust
+fn input() { let _ = std::io::stdin(); let _ = std::env::args(); }
+```
+
 **Good (passes):**
+
+_foreign fs module import_
+
+```rust
+use custom::fs;
+fn load() { let _ = fs::read(1); }
+```
+
+_foreign Command type_
+
+```rust
+use clap::Command;
+fn cli() { let _ = Command::new("tool"); }
+```
 
 _injected clock is fine_
 
@@ -764,6 +819,15 @@ _qualified AsRef bound_
 struct User<T: std::convert::AsRef<str>> { name: T }
 ```
 
+_AsRef-bounded struct in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct User<T: AsRef<str>> { name: T }
+}
+```
+
 **Good (passes):**
 
 _concrete owned field_
@@ -788,15 +852,6 @@ _bounded parameter not stored in fields_
 
 ```rust
 struct S<T: AsRef<str>> { count: usize }
-```
-
-_AsRef-bounded struct in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct User<T: AsRef<str>> { name: T }
-}
 ```
 
 ### rust_assert_side_effects
@@ -826,6 +881,15 @@ _subtract assign in debug_assert_
 fn f() { let mut x = 5; debug_assert!({ x -= 1; x > 0 }); }
 ```
 
+_compound assign in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn t() { let mut x = 0; debug_assert!({ x += 1; x > 0 }); }
+}
+```
+
 **Good (passes):**
 
 _simple comparison_
@@ -838,15 +902,6 @@ _debug_assert_eq passes_
 
 ```rust
 fn f() { debug_assert_eq!(a, b); }
-```
-
-_compound assign in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn t() { let mut x = 0; debug_assert!({ x += 1; x > 0 }); }
-}
 ```
 
 ### rust_assoc_fn_no_self
@@ -871,6 +926,20 @@ struct Db;
 impl Db {
     fn check_parameters(input: &str) -> bool {
         input.is_empty()
+    }
+}
+```
+
+_unrelated helper in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct Db;
+    impl Db {
+        fn check_parameters(input: &str) -> bool {
+            input.is_empty()
+        }
     }
 }
 ```
@@ -951,20 +1020,6 @@ trait Calc {
 impl Calc for S {
     fn calc(x: u32) -> u32 {
         x
-    }
-}
-```
-
-_unrelated helper in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct Db;
-    impl Db {
-        fn check_parameters(input: &str) -> bool {
-            input.is_empty()
-        }
     }
 }
 ```
@@ -1221,6 +1276,15 @@ _three bool params_
 fn f(a: bool, b: bool, c: bool) {}
 ```
 
+_bool params in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+  fn f(a: bool, b: bool) {}
+}
+```
+
 **Good (passes):**
 
 _one bool param_
@@ -1241,15 +1305,6 @@ _self not counted_
 struct S;
 impl S {
   fn f(&self, a: bool) {}
-}
-```
-
-_bool params in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-  fn f(a: bool, b: bool) {}
 }
 ```
 
@@ -1885,6 +1940,15 @@ _method catch_unwind_
 fn f<F: Future>(fut: F) { let _ = fut.catch_unwind(); }
 ```
 
+_catch_unwind in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn t() { let _ = std::panic::catch_unwind(|| {}); }
+}
+```
+
 **Good (passes):**
 
 _catch_unwind with boundary comment_
@@ -1893,15 +1957,6 @@ _catch_unwind with boundary comment_
 fn f() {
     // PANIC-BOUNDARY: isolates one request; the worker restarts after any unwind
     let _ = std::panic::catch_unwind(|| {});
-}
-```
-
-_catch_unwind in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn t() { let _ = std::panic::catch_unwind(|| {}); }
 }
 ```
 
@@ -2064,6 +2119,15 @@ _two closure params_
 fn f(a: impl Fn(), b: impl FnOnce()) {}
 ```
 
+_closure first in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn f(cb: impl Fn(), x: u32) {}
+}
+```
+
 **Good (passes):**
 
 _closure last_
@@ -2090,15 +2154,6 @@ _no closure params_
 fn f(x: u32, y: u32) {}
 ```
 
-_closure first in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn f(cb: impl Fn(), x: u32) {}
-}
-```
-
 ### rust_collection_new_in_loop
 
 Flag collection constructors (`Vec::new()`, `vec![]`, `with_capacity`, ...) bound via `let` inside loops.
@@ -2109,7 +2164,7 @@ Flag collection constructors (`Vec::new()`, `vec![]`, `with_capacity`, ...) boun
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -2469,7 +2524,7 @@ Flag fn parameters typed as concrete I/O handles like `File` or `TcpStream`.
 | ------------ | -------------------------------------------------------------------------- |
 | Severity     | low                                                                        |
 | Type         | rust-ast                                                                   |
-| Enabled      | no                                                                         |
+| Enabled      | yes                                                                        |
 | Fixable      | no                                                                         |
 | Param: types | [String], default = ["File", "Stdin", "Stdout", "TcpStream", "UnixStream"] |
 
@@ -2557,7 +2612,7 @@ fn inspect(file: &syn::File) {}
 
 ### rust_conversion_self_convention
 
-Enforce C-CONV receivers: `as_`/`to_` methods borrow (`&self`), `into_` methods consume (`self`).
+Enforce C-CONV receivers: `as_`/`to_` methods borrow (`&self`), `into_` methods consume (`self`); `to_` may consume a `Copy` type declared in the same file.
 
 > The `as_`/`to_`/`into_` prefixes promise a cost and ownership contract; a consuming `to_` or borrowing `into_` misleads every caller.
 
@@ -2565,7 +2620,7 @@ Enforce C-CONV receivers: `as_`/`to_` methods borrow (`&self`), `into_` methods 
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -2614,7 +2669,50 @@ trait T {
 }
 ```
 
+_as\_ consumes a Copy type_
+
+```rust
+#[derive(Clone, Copy)]
+struct Id(u32);
+impl Id {
+    fn as_raw(self) -> u32 { self.0 }
+}
+```
+
+_wrong convention in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct S;
+    impl S {
+        fn as_str(self) {}
+    }
+}
+```
+
 **Good (passes):**
+
+_to\_ consumes a same-file Copy type_
+
+```rust
+#[derive(Clone, Copy)]
+struct Id(u32);
+impl Id {
+    fn to_raw(self) -> u32 { self.0 }
+}
+```
+
+_to\_ consumes a type with a manual Copy impl_
+
+```rust
+struct Id(u32);
+impl Clone for Id { fn clone(&self) -> Self { *self } }
+impl Copy for Id {}
+impl Id {
+    fn to_raw(self) -> u32 { self.0 }
+}
+```
 
 _as\_ borrows_
 
@@ -2667,18 +2765,6 @@ _non-conversion method_
 struct S;
 impl S {
     fn assemble(self) {}
-}
-```
-
-_wrong convention in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct S;
-    impl S {
-        fn as_str(self) {}
-    }
 }
 ```
 
@@ -2803,7 +2889,7 @@ Flag constructors with too many parameters or runs of identically-typed primitiv
 | ---------------- | ---------------- |
 | Severity         | medium           |
 | Type             | rust-ast         |
-| Enabled          | no               |
+| Enabled          | yes              |
 | Fixable          | no               |
 | Param: threshold | i64, default = 5 |
 
@@ -2838,6 +2924,20 @@ struct Deposit;
 impl Deposit {
     pub fn with_parts(a: Account, b: Currency, c: Memo, d: Clock, audit: Audit) -> Deposit {
         Deposit
+    }
+}
+```
+
+_wide constructor in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct Acc;
+    impl Acc {
+        pub fn new(a: u32, b: u32, c: u32, d: u32) -> Self {
+            Acc
+        }
     }
 }
 ```
@@ -2908,20 +3008,6 @@ impl Make for Acc {
 }
 ```
 
-_wide constructor in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct Acc;
-    impl Acc {
-        pub fn new(a: u32, b: u32, c: u32, d: u32) -> Self {
-            Acc
-        }
-    }
-}
-```
-
 ### rust_cyclomatic_complexity
 
 Flag functions with structural control-flow complexity above the configured threshold.
@@ -2932,7 +3018,7 @@ Flag functions with structural control-flow complexity above the configured thre
 | ---------------- | ----------------- |
 | Severity         | medium            |
 | Type             | rust-ast          |
-| Enabled          | no                |
+| Enabled          | yes               |
 | Fixable          | no                |
 | Param: threshold | i64, default = 15 |
 
@@ -3143,6 +3229,15 @@ _return type with deep nesting_
 fn f() -> Vec<Vec<HashMap<String, Vec<i32>>>> { todo!() }
 ```
 
+_deep nesting in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn f(x: Vec<Vec<HashMap<String, Vec<i32>>>>) {}
+}
+```
+
 _reference to depth 4 fails_
 
 ```rust
@@ -3187,15 +3282,6 @@ _depth 3 passes_
 fn f(x: Vec<Vec<Vec<i32>>>) {}
 ```
 
-_deep nesting in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn f(x: Vec<Vec<HashMap<String, Vec<i32>>>>) {}
-}
-```
-
 _reference to depth 3 passes_
 
 ```rust
@@ -3212,7 +3298,7 @@ Flag std `HashMap`/`HashSet` types and constructors that use the default SipHash
 | -------- | -------- |
 | Severity | low      |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -3417,6 +3503,15 @@ _Instant parameter_
 pub extern "C" fn when(t: std::time::Instant) {}
 ```
 
+_C export in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    pub extern "C" fn f(s: String) {}
+}
+```
+
 **Good (passes):**
 
 _primitive and raw-pointer signature_
@@ -3444,15 +3539,6 @@ _wasm_bindgen files follow their own convention_
 ```rust
 use wasm_bindgen::JsValue;
 pub extern "C" fn f(s: String) {}
-```
-
-_C export in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    pub extern "C" fn f(s: String) {}
-}
 ```
 
 ### rust_doc_comment_period
@@ -3530,7 +3616,7 @@ _ends with colon_
 
 Require a `# Errors` section on documented pub fns returning `Result`.
 
-> Callers of publishable packages need failure conditions listed; canonical docs put them under `# Errors`. Packages that explicitly set `publish = false` are treated as internal workspace implementation and skipped.
+> Callers need failure conditions listed, whether the package is published or only used inside the workspace; canonical docs put them under `# Errors`.
 
 |          |          |
 | -------- | -------- |
@@ -3723,7 +3809,7 @@ Require a `# Panics` section on documented pub fns that can panic.
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -4032,6 +4118,15 @@ _b && b_
 fn f(b: bool) { if b && b {} }
 ```
 
+_dup in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn t(x: i32) { if x == x {} }
+}
+```
+
 **Good (passes):**
 
 _x == y_
@@ -4044,15 +4139,6 @@ _a + b_
 
 ```rust
 fn f(a: i32, b: i32) { let _z = a + b; }
-```
-
-_dup in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn t(x: i32) { if x == x {} }
-}
 ```
 
 ### rust_duplicate_strings
@@ -4078,6 +4164,12 @@ _long string repeated three times_
 const A: &str = "a deliberately long repeated fixture string value";
 const B: &str = "a deliberately long repeated fixture string value";
 const C: &str = "a deliberately long repeated fixture string value";
+```
+
+_repeated strings in tests_
+
+```rust
+#[cfg(test)] mod tests { const A: &str = "a deliberately long repeated fixture string value"; const B: &str = "a deliberately long repeated fixture string value"; const C: &str = "a deliberately long repeated fixture string value"; }
 ```
 
 **Good (passes):**
@@ -4109,12 +4201,6 @@ _lint reasons inside macro definitions remain metadata_
 macro_rules! a { () => { #[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn a() {} } }
 macro_rules! b { () => { #[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn b() {} } }
 macro_rules! c { () => { #[expect(dead_code, reason = "a deliberately long repeated lint reason string")] fn c() {} } }
-```
-
-_strings in tests are fixtures_
-
-```rust
-#[cfg(test)] mod tests { const A: &str = "a deliberately long repeated fixture string value"; const B: &str = "a deliberately long repeated fixture string value"; const C: &str = "a deliberately long repeated fixture string value"; }
 ```
 
 _strings in Rulewright test registration macros are fixtures_
@@ -4429,6 +4515,15 @@ _f64 with too many digits_
 fn f() { let _x = 3.14159265358979323846_f64; }
 ```
 
+_excessive precision in test_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn t() { let _x = 1.23456789012345_f32; }
+}
+```
+
 **Good (passes):**
 
 _f32 with ok precision_
@@ -4447,15 +4542,6 @@ _unsuffixed float is fine_
 
 ```rust
 fn f() { let _x = 3.14159265358979323846; }
-```
-
-_excessive precision in test_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn t() { let _x = 1.23456789012345_f32; }
-}
 ```
 
 ### rust_exotic_numeric_api
@@ -4811,6 +4897,16 @@ pub struct Msg {
 }
 ```
 
+_export in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    #[no_mangle]
+    pub extern "C" fn service_tick() {}
+}
+```
+
 **Good (passes):**
 
 _repr(C) struct without pointers_
@@ -4850,16 +4946,6 @@ _wasm_bindgen files follow their own convention_
 use wasm_bindgen::prelude::JsValue;
 #[no_mangle]
 pub extern "C" fn service_tick() {}
-```
-
-_export in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    #[no_mangle]
-    pub extern "C" fn service_tick() {}
-}
 ```
 
 ### rust_ffi_thin_glue
@@ -4998,7 +5084,7 @@ Require the first doc sentence to end on the first line within a word budget.
 | ---------------- | ----------------- |
 | Severity         | low               |
 | Type             | rust-line         |
-| Enabled          | no                |
+| Enabled          | yes               |
 | Fixable          | no                |
 | Param: max_words | i64, default = 15 |
 
@@ -5430,6 +5516,16 @@ const fn assert_send<T: Send>() {}
 const _: () = assert_send::<Foo>();
 ```
 
+_Future impl in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct Foo;
+    impl Future for Foo { type Output = (); }
+}
+```
+
 **Good (passes):**
 
 _Future impl with Send assertion_
@@ -5448,16 +5544,6 @@ struct Foo;
 impl Iterator for Foo { type Item = u8; }
 ```
 
-_Future impl in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct Foo;
-    impl Future for Foo { type Output = (); }
-}
-```
-
 ### rust_getter_prefix
 
 Flag receiver-only accessor methods named `get_something` — Rust getters are named after the field (C-GETTER).
@@ -5468,7 +5554,7 @@ Flag receiver-only accessor methods named `get_something` — Rust getters are n
 | -------- | -------- |
 | Severity | low      |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -5487,6 +5573,18 @@ _get\_ trait method_
 ```rust
 trait T {
     fn get_len(&self) -> usize;
+}
+```
+
+_getter in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct S;
+    impl S {
+        fn get_name(&self) {}
+    }
 }
 ```
 
@@ -5576,18 +5674,6 @@ _trait implementation method_
 struct S;
 impl External for S {
     fn get_name(&self) -> &str { "name" }
-}
-```
-
-_getter in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct S;
-    impl S {
-        fn get_name(&self) {}
-    }
 }
 ```
 
@@ -5716,6 +5802,15 @@ thread_local! {
 }
 ```
 
+_static atomic in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+}
+```
+
 **Good (passes):**
 
 _immutable str static_
@@ -5734,15 +5829,6 @@ _local mutex_
 
 ```rust
 fn f() { let m = std::sync::Mutex::new(0); drop(m); }
-```
-
-_static atomic in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
-}
 ```
 
 ### rust_hardcoded_url
@@ -5868,15 +5954,6 @@ struct Foo;
 impl Into<String> for Foo { fn into(self) -> String { String::new() } }
 ```
 
-**Good (passes):**
-
-_impl From instead_
-
-```rust
-struct Foo;
-impl From<Foo> for String { fn from(_: Foo) -> String { String::new() } }
-```
-
 _impl Into in test_
 
 ```rust
@@ -5885,6 +5962,15 @@ mod tests {
     struct Foo;
     impl Into<String> for Foo { fn into(self) -> String { String::new() } }
 }
+```
+
+**Good (passes):**
+
+_impl From instead_
+
+```rust
+struct Foo;
+impl From<Foo> for String { fn from(_: Foo) -> String { String::new() } }
 ```
 
 ### rust_impl_member_order
@@ -5897,7 +5983,7 @@ Require inherent impl members to follow the canonical category and visibility or
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | yes      |
 
 **Bad (triggers violation):**
@@ -6107,9 +6193,9 @@ impl Default for Item { fn default() -> Self { Self } }
 
 ### rust_inline_test_module_size
 
-Flag inline `#[cfg(test)] mod` blocks exceeding the configured nonblank-line threshold.
+Flag inline `#[cfg(test)] mod` bodies exceeding the configured nonblank-line threshold; out-of-line `mod tests;` declarations are allowed.
 
-> Oversized inline test modules drown the implementation in the same file. Move private unit tests to a sibling `#[path]` module, or public-API tests to `tests/`.
+> Oversized inline test modules drown the implementation in the same file. Move private unit tests to a sibling module file declared with `#[cfg(test)] mod tests;`, or public-API tests to `tests/`. The count includes the braces, so a threshold of 0 forbids every inline test module body.
 
 |                  |                    |
 | ---------------- | ------------------ |
@@ -6128,6 +6214,22 @@ _small test module_
 mod tests {
     #[test]
     fn t() {}
+}
+```
+
+_out-of-line test module_
+
+```rust
+#[cfg(test)]
+mod tests;
+```
+
+_production-only module_
+
+```rust
+#[cfg(not(test))]
+mod real {
+    fn r() {}
 }
 ```
 
@@ -6236,6 +6338,15 @@ _enum with large variant_
 enum Msg { Small(u8), Large([u8; 1024]) }
 ```
 
+_large enum in test_
+
+```rust
+#[cfg(test)]
+mod tests {
+    enum Msg { Small(u8), Large([u8; 1024]) }
+}
+```
+
 _named-field large variant_
 
 ```rust
@@ -6260,15 +6371,6 @@ _large variant boxed is fine_
 
 ```rust
 enum Msg { Small(u8), Large(Box<[u8; 1024]>) }
-```
-
-_large enum in test_
-
-```rust
-#[cfg(test)]
-mod tests {
-    enum Msg { Small(u8), Large([u8; 1024]) }
-}
 ```
 
 _single variant enum_
@@ -6344,6 +6446,15 @@ _large stack array_
 fn f() { let _buf: [u8; 8192] = [0u8; 8192]; }
 ```
 
+_large array in test_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn t() { let _buf = [0u8; 8192]; }
+}
+```
+
 _u64 element array type_
 
 ```rust
@@ -6388,13 +6499,10 @@ _small stack array_
 fn f() { let _buf = [0u8; 64]; }
 ```
 
-_large array in test_
+_static table lives in static memory_
 
 ```rust
-#[cfg(test)]
-mod tests {
-    fn t() { let _buf = [0u8; 8192]; }
-}
+pub static TABLE: [u64; 1024] = [0; 1024];
 ```
 
 ### rust_log_in_loop
@@ -6582,6 +6690,15 @@ _five-word type alias_
 type SharedRemoteAccountDataCache = ();
 ```
 
+_long name in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct GlobalApplicationConfigManagerFake;
+}
+```
+
 **Good (passes):**
 
 _two-word name_
@@ -6600,15 +6717,6 @@ _acronym run counts as one word_
 
 ```rust
 struct HTMLParserConfigBuilder;
-```
-
-_long name in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct GlobalApplicationConfigManagerFake;
-}
 ```
 
 ### rust_loop_to_while
@@ -6636,6 +6744,15 @@ _loop with break-if-not at start_
 
 ```rust
 fn f() { loop { if done() { break; } do_work(); } }
+```
+
+_loop in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn f() { loop { if !cond() { break; } do_work(); } }
+}
 ```
 
 **Good (passes):**
@@ -6674,15 +6791,6 @@ _loop with break value_
 
 ```rust
 fn f() -> i32 { loop { if done() { break 42; } } }
-```
-
-_loop in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn f() { loop { if !cond() { break; } do_work(); } }
-}
 ```
 
 ### rust_lossy_cast
@@ -7045,6 +7153,15 @@ struct S;
 impl S { fn f() -> impl Future<Output = ()> { async { } } }
 ```
 
+_manual future in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn f() -> impl Future<Output = ()> { async { } }
+}
+```
+
 **Good (passes):**
 
 _async fn_
@@ -7084,15 +7201,6 @@ _non-Future impl trait return_
 fn f() -> impl Iterator<Item = u8> { std::iter::once(1) }
 ```
 
-_manual future in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn f() -> impl Future<Output = ()> { async { } }
-}
-```
-
 ### rust_manual_error_impl
 
 Reject hand-written `Display` and `Error` implementations for `*Error` types.
@@ -7118,6 +7226,18 @@ _manual error_
 
 ```rust
 struct ParseError; impl std::error::Error for ParseError {}
+```
+
+_manual core display_
+
+```rust
+struct IdError; impl core::fmt::Display for IdError { fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result { todo!() } }
+```
+
+_manual core error_
+
+```rust
+struct IdError; impl core::error::Error for IdError {}
 ```
 
 **Good (passes):**
@@ -7443,6 +7563,15 @@ _bare forget without comment_
 fn f() { std::mem::forget(String::new()); }
 ```
 
+_forget in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn t() { std::mem::forget(String::new()); }
+}
+```
+
 **Good (passes):**
 
 _forget with LEAK comment_
@@ -7460,15 +7589,6 @@ _forget with SAFETY comment_
 fn f() {
     // SAFETY: ownership transferred to FFI
     std::mem::forget(String::new());
-}
-```
-
-_forget in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn t() { std::mem::forget(String::new()); }
 }
 ```
 
@@ -7821,9 +7941,9 @@ mod writer;
 
 ### rust_module_docs
 
-Require `//!` crate docs at the top of Rust library roots.
+Require `//!` docs at the top of Rust library roots and module files.
 
-> Library crate docs are the public entry point for API navigation. Private module files are deliberately excluded.
+> Crate and module docs are the entry points for navigating code: they say what a crate or module is for before a reader opens its items. Binary roots, build scripts, and test code are excluded.
 
 |          |           |
 | -------- | --------- |
@@ -7923,6 +8043,17 @@ impl Foo { fn a() {} }
 impl Foo { fn b() {} }
 ```
 
+_duplicate impl in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+  struct Foo;
+  impl Foo { fn a() {} }
+  impl Foo { fn b() {} }
+}
+```
+
 **Good (passes):**
 
 _different types_
@@ -7942,17 +8073,6 @@ impl Foo {}
 impl std::fmt::Display for Foo { fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { Ok(()) } }
 ```
 
-_duplicate impl in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-  struct Foo;
-  impl Foo { fn a() {} }
-  impl Foo { fn b() {} }
-}
-```
-
 ### rust_mutex_in_async
 
 Flag `std::sync::Mutex` usage in async functions under an async-mutex-only policy.
@@ -7963,7 +8083,7 @@ Flag `std::sync::Mutex` usage in async functions under an async-mutex-only polic
 | -------- | -------- |
 | Severity | high     |
 | Type     | rust-ast |
-| Enabled  | yes      |
+| Enabled  | no       |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -7980,14 +8100,6 @@ _std Mutex type in async fn_
 async fn f() { let _m: std::sync::Mutex<i32> = std::sync::Mutex::new(0); }
 ```
 
-**Good (passes):**
-
-_std Mutex in sync fn_
-
-```rust
-fn f() { let _m = std::sync::Mutex::new(0); }
-```
-
 _Mutex in async in test_
 
 ```rust
@@ -7995,6 +8107,14 @@ _Mutex in async in test_
 mod tests {
     async fn t() { let _m = std::sync::Mutex::new(0); }
 }
+```
+
+**Good (passes):**
+
+_std Mutex in sync fn_
+
+```rust
+fn f() { let _m = std::sync::Mutex::new(0); }
 ```
 
 ### rust_native_escape_hatches
@@ -8325,13 +8445,13 @@ pub mod parsing;
 
 Flag `pub` enums without `#[non_exhaustive]` when downstream variants should remain extensible.
 
-> Adding a variant can break downstream exhaustive matches. Use `#[non_exhaustive]` for externally reachable enums in publishable packages whose variant set may grow; packages that explicitly set `publish = false` are skipped. Keep the rule disabled or scoped away for private-module enums and deliberately closed protocol, state-machine, or schema vocabularies. Rulewright recognizes syntax-level `pub` but does not resolve re-export visibility.
+> Adding a variant can break downstream exhaustive matches. Use `#[non_exhaustive]` for externally reachable enums whose variant set may grow, including enums used by other packages of the same workspace. Keep the rule disabled or scoped away for private-module enums and deliberately closed protocol, state-machine, or schema vocabularies. Rulewright recognizes syntax-level `pub` but does not resolve re-export visibility.
 
 |          |          |
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -8411,6 +8531,15 @@ _Rc in async block before await_
 fn f() { let fut = async { let rc = Rc::new(1); g().await; }; }
 ```
 
+_Rc across await in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    async fn f() { let rc = Rc::new(1); g().await; }
+}
+```
+
 **Good (passes):**
 
 _await before the Rc binding_
@@ -8435,15 +8564,6 @@ _await only inside a nested async block_
 
 ```rust
 async fn f() { let rc = Rc::new(1); let fut = async { g().await; }; }
-```
-
-_Rc across await in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    async fn f() { let rc = Rc::new(1); g().await; }
-}
 ```
 
 ### rust_ok_or_eager
@@ -8518,7 +8638,7 @@ Flag fn parameters typed `&String`, `&PathBuf`, `&Vec<T>`, `&OsString`.
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -8556,6 +8676,15 @@ impl S {
 }
 ```
 
+_&String in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn f(x: &String) {}
+}
+```
+
 **Good (passes):**
 
 _&str parameter_
@@ -8580,15 +8709,6 @@ _slice parameter_
 
 ```rust
 fn f(x: &[u32]) {}
-```
-
-_&String in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn f(x: &String) {}
-}
 ```
 
 ### rust_padding
@@ -8931,7 +9051,7 @@ Ban `panic!`, `.unwrap()`, `.expect()` in functions returning `Result`.
 | -------- | -------- |
 | Severity | high     |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -9128,7 +9248,7 @@ Flag related fns whose shared parameters appear in a different order.
 | -------- | -------- |
 | Severity | low      |
 | Type     | rust-ast |
-| Enabled  | yes      |
+| Enabled  | no       |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -9214,7 +9334,7 @@ Ban `println!`/`eprintln!`/`print!`/`eprint!` outside test code.
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -9339,13 +9459,13 @@ fn helper(input: String) -> String { input }
 
 Require doc comments on public items.
 
-> Undocumented public items force users to read source code. Doc comments generate searchable API documentation for publishable packages; packages that explicitly set `publish = false` are treated as internal workspace implementation and skipped.
+> Undocumented public items force users to read source code. Doc comments generate searchable API documentation for every package, published or used only inside the workspace.
 
 |          |          |
 | -------- | -------- |
 | Severity | low      |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -9457,7 +9577,7 @@ Flag foreign crate types leaked through `pub` fn signatures, fields, and type al
 | ---------------------- | ---------------------- |
 | Severity               | low                    |
 | Type                   | rust-ast               |
-| Enabled                | no                     |
+| Enabled                | yes                    |
 | Fixable                | no                     |
 | Param: allowed         | [String], default = [] |
 | Param: assume_external | [String], default = [] |
@@ -9509,6 +9629,20 @@ impl S {
 }
 ```
 
+_imported external type_
+
+```rust
+use serde_json::Value;
+pub fn f(x: Value) {}
+```
+
+_aliased external type_
+
+```rust
+use toml::de::Error as TomlError;
+pub enum E { Toml(TomlError) }
+```
+
 **Good (passes):**
 
 _private fn with external type_
@@ -9535,7 +9669,7 @@ _workspace type passes_
 pub fn f(x: vendor_types::RecordId) {}
 ```
 
-_bare imported name passes_
+_bare name without an import passes_
 
 ```rust
 pub fn f(x: Value) {}
@@ -9894,7 +10028,7 @@ Flag `pub enum` named `*Error`/`*ErrorKind` — expose a situation-specific erro
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -10045,6 +10179,15 @@ struct S;
 impl S { fn go(&self) { Self::go(self); } }
 ```
 
+_recursion in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn factorial(n: u64) -> u64 { if n <= 1 { 1 } else { n * factorial(n - 1) } }
+}
+```
+
 _method recursion through self_
 
 ```rust
@@ -10063,15 +10206,6 @@ _no recursion_
 
 ```rust
 fn add(a: u64, b: u64) -> u64 { a + b }
-```
-
-_recursion in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn factorial(n: u64) -> u64 { if n <= 1 { 1 } else { n * factorial(n - 1) } }
-}
 ```
 
 _calling different function_
@@ -10135,6 +10269,16 @@ struct S { x: i32 }
 fn f(x: i32) -> S { S { x: x } }
 ```
 
+_redundant in test_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct S { x: i32 }
+    fn t(x: i32) -> S { S { x: x } }
+}
+```
+
 **Good (passes):**
 
 _shorthand field init_
@@ -10149,16 +10293,6 @@ _different name and value_
 ```rust
 struct S { x: i32 }
 fn f(y: i32) -> S { S { x: y } }
-```
-
-_redundant in test_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct S { x: i32 }
-    fn t(x: i32) -> S { S { x: x } }
-}
 ```
 
 ### rust_rulewright_directives
@@ -10322,6 +10456,16 @@ _marker at a field-name boundary_
 struct Auth { oauth_bearer: String }
 ```
 
+_sensitive struct in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    #[derive(Debug)]
+    struct Creds { password: String }
+}
+```
+
 **Good (passes):**
 
 _Debug on struct without sensitive fields_
@@ -10351,30 +10495,21 @@ _marker text inside an unrelated word_
 struct Parser { tokenizer: String }
 ```
 
-_sensitive struct in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    #[derive(Debug)]
-    struct Creds { password: String }
-}
-```
-
 ### rust_similar_fns
 
 Find exact and near duplicate function bodies; full-workspace runs are authoritative.
 
-> Substantially identical functions may have drifted copies of one behavior. Share the implementation only when both functions must evolve together; keep coincidental similarity separate and suppress it with that reason.
+> Substantially identical functions may have drifted copies of one behavior. Share the implementation only when both functions must evolve together; keep coincidental similarity separate and suppress it with that reason. Each `uncompared` entry lists path groups separated by `|` (for example `crates/fast/** | crates/reference/**`); functions in different groups of one entry are not compared with each other, while each group is still compared within itself and with every other path.
 
-|                        |                   |
-| ---------------------- | ----------------- |
-| Severity               | low               |
-| Type                   | rust-workspace    |
-| Enabled                | yes               |
-| Fixable                | no                |
-| Param: min_tokens      | i64, default = 40 |
-| Param: jaccard_percent | i64, default = 85 |
+|                        |                        |
+| ---------------------- | ---------------------- |
+| Severity               | low                    |
+| Type                   | rust-workspace         |
+| Enabled                | yes                    |
+| Fixable                | no                     |
+| Param: min_tokens      | i64, default = 40      |
+| Param: jaccard_percent | i64, default = 85      |
+| Param: uncompared      | [String], default = [] |
 
 **Bad (triggers violation):**
 
@@ -10623,7 +10758,7 @@ Reject `String` and `&str` as function error types.
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -11058,6 +11193,24 @@ impl Download for Client {
 }
 ```
 
+_logic in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    trait Download { fn get(&self); }
+    struct Client;
+    impl Download for Client {
+        fn get(&self) {
+            let a = 1;
+            let b = a + 1;
+            let c = b + 1;
+            let _ = c;
+        }
+    }
+}
+```
+
 **Good (passes):**
 
 _forwarding trait impl_
@@ -11124,24 +11277,6 @@ impl Download for Client {
 }
 ```
 
-_logic in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    trait Download { fn get(&self); }
-    struct Client;
-    impl Download for Client {
-        fn get(&self) {
-            let a = 1;
-            let b = a + 1;
-            let c = b + 1;
-            let _ = c;
-        }
-    }
-}
-```
-
 ### rust_transmute_in_safe_fn
 
 Flag `transmute` inside a safe `pub` fn.
@@ -11172,6 +11307,15 @@ impl S {
 }
 ```
 
+_transmute in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    pub fn t(x: u32) -> f32 { unsafe { std::mem::transmute(x) } }
+}
+```
+
 **Good (passes):**
 
 _transmute in pub unsafe fn_
@@ -11190,15 +11334,6 @@ _transmute in pub(crate) fn_
 
 ```rust
 pub(crate) fn f(x: u32) -> f32 { unsafe { std::mem::transmute(x) } }
-```
-
-_transmute in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    pub fn t(x: u32) -> f32 { unsafe { std::mem::transmute(x) } }
-}
 ```
 
 ### rust_transmute_usage
@@ -11222,6 +11357,15 @@ _bare transmute without safety comment_
 unsafe fn f() { let _x: u32 = std::mem::transmute(1.0f32); }
 ```
 
+_transmute in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    unsafe fn t() { let _x: u32 = std::mem::transmute(1.0f32); }
+}
+```
+
 **Good (passes):**
 
 _transmute with safety comment_
@@ -11230,15 +11374,6 @@ _transmute with safety comment_
 unsafe fn f() {
     // SAFETY: f32 and u32 have the same size
     let _x: u32 = std::mem::transmute(1.0f32);
-}
-```
-
-_transmute in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    unsafe fn t() { let _x: u32 = std::mem::transmute(1.0f32); }
 }
 ```
 
@@ -11602,6 +11737,15 @@ _unsafe without safety comment_
 fn f() { unsafe { std::ptr::null::<u8>().read() }; }
 ```
 
+_unsafe in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    fn t() { unsafe { std::ptr::null::<u8>().read() }; }
+}
+```
+
 **Good (passes):**
 
 _unsafe with safety comment_
@@ -11610,15 +11754,6 @@ _unsafe with safety comment_
 fn f() {
     // SAFETY: pointer is valid and aligned
     unsafe { std::ptr::null::<u8>().read() };
-}
-```
-
-_unsafe in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    fn t() { unsafe { std::ptr::null::<u8>().read() }; }
 }
 ```
 
@@ -11668,6 +11803,15 @@ impl S {
 }
 ```
 
+_unsafe fn in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    unsafe fn t() {}
+}
+```
+
 **Good (passes):**
 
 _unsafe fn with Safety doc section_
@@ -11698,15 +11842,6 @@ _extern block fns are exempt_
 ```rust
 extern "C" {
     fn ffi(x: u32) -> u32;
-}
-```
-
-_unsafe fn in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    unsafe fn t() {}
 }
 ```
 
@@ -11869,7 +12004,7 @@ Ban `.unwrap()` in library code.
 | -------- | -------- |
 | Severity | medium   |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -11963,7 +12098,7 @@ Flag non-pub struct fields typed `Vec<String>` or `Vec<Vec<T>>`.
 | -------- | -------- |
 | Severity | low      |
 | Type     | rust-ast |
-| Enabled  | no       |
+| Enabled  | yes      |
 | Fixable  | no       |
 
 **Bad (triggers violation):**
@@ -12085,6 +12220,15 @@ _weasel word in the middle_
 struct ManagerConfig;
 ```
 
+_weasel type in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+    struct FakeManager;
+}
+```
+
 **Good (passes):**
 
 _word only as partial segment_
@@ -12109,15 +12253,6 @@ _weasel-named fn is not a type definition_
 
 ```rust
 fn manager() {}
-```
-
-_weasel type in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-    struct FakeManager;
-}
 ```
 
 ### rust_where_clauses
@@ -12304,6 +12439,15 @@ _literal on left ne_
 fn f(y: i32) { if 1 != y {} }
 ```
 
+_yoda in test module_
+
+```rust
+#[cfg(test)]
+mod tests {
+  fn t(x: i32) { if 0 == x {} }
+}
+```
+
 **Good (passes):**
 
 _literal on right_
@@ -12322,15 +12466,6 @@ _non-comparison_
 
 ```rust
 fn f(x: i32) { let _ = 1 + x; }
-```
-
-_yoda in test module_
-
-```rust
-#[cfg(test)]
-mod tests {
-  fn t(x: i32) { if 0 == x {} }
-}
 ```
 
 ### toml_ambiguous_unicode
@@ -12499,6 +12634,72 @@ edition.workspace = true
 
 ```
 
+### toml_cargo_exact_versions
+
+Require every declared dependency version to be an exact `=major.minor.patch` requirement.
+
+> Exact requirements make the agreed version the only one a manifest accepts, so an upgrade is a reviewed edit of the manifest rather than a side effect of `cargo update`. Inherited (`workspace = true`) and version-less path or Git dependencies are not checked.
+
+|          |        |
+| -------- | ------ |
+| Severity | medium |
+| Type     | toml   |
+| Enabled  | no     |
+| Fixable  | no     |
+
+**Bad (triggers violation):**
+
+_caret requirement_
+
+```rust
+[dependencies]
+serde = "1"
+
+```
+
+_partial exact requirement_
+
+```rust
+[dev-dependencies]
+serde = { version = "=1.0" }
+
+```
+
+_range requirement_
+
+```rust
+[workspace.dependencies]
+serde = ">=1, <2"
+
+```
+
+**Good (passes):**
+
+_exact registry version_
+
+```rust
+[dependencies]
+serde = "=1.0.228"
+
+```
+
+_exact workspace table version_
+
+```rust
+[workspace.dependencies]
+serde = { version = "=1.0.228", default-features = false }
+
+```
+
+_inherited and path dependencies_
+
+```rust
+[dependencies]
+serde.workspace = true
+local = { path = "../local" }
+
+```
+
 ### toml_cargo_feature_names
 
 Flag Cargo feature names with use-/with- prefixes or -support suffixes.
@@ -12627,15 +12828,15 @@ name = "foo"
 
 ### toml_cargo_layers
 
-Reject dependency edges configured as manifest-glob !> package-glob,package-glob.
+Enforce dependency edges: `manifest-glob !> glob,...` forbids, `manifest-glob => glob,...` lists everything allowed.
 
-> Explicit dependency boundaries prevent accidental coupling between workspace layers. Configure the boundaries appropriate to your project; no package names are reserved.
+> Explicit dependency boundaries prevent accidental coupling between workspace layers. A deny edge rejects matching dependencies; an allow edge makes its targets, together with those of every other allow edge matching the manifest, the complete set of dependencies the manifest may declare. A trailing `(normal, build, dev)` limits an edge to those dependency kinds. Configure the boundaries appropriate to your project; no package names are reserved.
 
 |              |                        |
 | ------------ | ---------------------- |
 | Severity     | high                   |
 | Type         | workspace              |
-| Enabled      | yes                    |
+| Enabled      | no                     |
 | Fixable      | no                     |
 | Param: rules | [String], default = [] |
 
@@ -12724,7 +12925,7 @@ Restrict path dependency declarations and patches to approved manifests and work
 | ------------------------------ | ---------------------------------- |
 | Severity                       | high                               |
 | Type                           | workspace                          |
-| Enabled                        | yes                                |
+| Enabled                        | no                                 |
 | Fixable                        | no                                 |
 | Param: allow_in                | [String], default = ["Cargo.toml"] |
 | Param: allow_outside_workspace | bool, default = false              |
@@ -12788,7 +12989,7 @@ _derive-only dependency_
 
 Flag [workspace.dependencies] entries that enable features outside the allowlist.
 
-> Features are additive and belong to the consuming crate; the workspace table should only pin versions so members do not inherit unwanted features.
+> Features are additive and belong to the consuming crate; the workspace table should only pin versions so members do not inherit unwanted features. `allowed_features` applies to every entry; each `crate_features` entry `name: feature, feature` additionally grants features to the dependency with that key.
 
 |                         |                                       |
 | ----------------------- | ------------------------------------- |
@@ -12797,6 +12998,7 @@ Flag [workspace.dependencies] entries that enable features outside the allowlist
 | Enabled                 | yes                                   |
 | Fixable                 | no                                    |
 | Param: allowed_features | [String], default = ["derive", "std"] |
+| Param: crate_features   | [String], default = []                |
 
 **Bad (triggers violation):**
 
@@ -12805,6 +13007,15 @@ _feature outside allowlist_
 ```rust
 [workspace.dependencies]
 tsify = { version = "0.5", features = ["js"] }
+
+```
+
+_dotted dependency table_
+
+```rust
+[workspace.dependencies.tsify]
+version = "0.5"
+features = ["js"]
 
 ```
 

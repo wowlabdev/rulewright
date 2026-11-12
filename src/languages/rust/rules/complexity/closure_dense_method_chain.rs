@@ -81,7 +81,6 @@ fn check_closure_dense_method_chain(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
     let outermost_calls = ctx
         .nodes::<ast::MethodCallExpr>()
-        .filter(|call| !ctx.is_in_test(call))
         .filter(|call| !is_receiver_of_method_call(call));
 
     outermost_calls

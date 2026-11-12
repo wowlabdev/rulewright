@@ -50,7 +50,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "Rc across await in test module",
         code: "#[cfg(test)]\nmod tests {\n    async fn f() { let rc = Rc::new(1); g().await; }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -65,9 +65,7 @@ fn check_nonsend_across_await(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let mut violations = Vec::new();
 
     for function in ctx.nodes::<ast::Fn>().filter(|function| {
-        super::support::is_item_or_impl_fn(function)
-            && !ctx.is_in_test(function)
-            && function.async_token().is_some()
+        super::support::is_item_or_impl_fn(function) && function.async_token().is_some()
     }) {
         if let Some(block) = function.body() {
             scan_block(ctx, &block, &mut violations);
@@ -76,7 +74,7 @@ fn check_nonsend_across_await(ctx: &AstCtx<'_>) -> Vec<Violation> {
 
     for block in ctx
         .nodes::<ast::BlockExpr>()
-        .filter(|block| !ctx.is_in_test(block) && block.async_token().is_some())
+        .filter(|block| block.async_token().is_some())
     {
         scan_block(ctx, &block, &mut violations);
     }

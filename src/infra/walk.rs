@@ -1,5 +1,7 @@
 // #rw(file: rust_default_hasher) dedup set on a cold walk path; fast-hasher dependency not warranted
 
+//! Workspace walking that honors ignore files and Cargo boundaries.
+
 use std::collections::HashSet;
 
 use crate::{

@@ -1,5 +1,7 @@
 // #rw(file: rust_inline_test_module_size) registry validation fixtures exercise private preflight paths
 
+//! Rule metadata, rule packs, and the deterministic rule registry.
+
 use std::collections::{BTreeMap, HashSet};
 
 use crate::{AstCtx, FileCtx, Fix, TomlCtx, Violation, languages::workspace::WorkspaceCtx};
@@ -415,6 +417,8 @@ fn valid_pack_name(value: &str) -> bool {
         })
 }
 
+const NEGATIVE_INT_DEFAULT: &str = "integer parameter defaults must be non-negative";
+
 fn validate_rule(pack: &'static str, rule: &Rule) -> Result<(), RegistryError> {
     let invalid = |reason| RegistryError::InvalidRule {
         pack,
@@ -460,7 +464,7 @@ fn validate_rule(pack: &'static str, rule: &Rule) -> Result<(), RegistryError> {
 
         match (&parameter.param_type, &parameter.default) {
             (ParamType::Int, ParamDefault::Int(value)) if *value < 0 => {
-                return Err(invalid("integer parameter defaults must be non-negative"));
+                return Err(invalid(NEGATIVE_INT_DEFAULT));
             }
 
             (ParamType::Int, ParamDefault::Int(_)) | (ParamType::Bool, ParamDefault::Bool(_)) => {}
@@ -581,7 +585,7 @@ impl Rule {
         }
     }
 
-    /// Construct a Rust line rule that sees complete source, including test-only items.
+    /// Construct a Rust line rule that also sees `EXAMPLES` and rule-registration macro calls.
     ///
     /// The check must distinguish code from marker lookalikes in strings or comments.
     /// Prefer [`Self::rust_line`] unless the rule is explicitly opted into within source.
@@ -974,7 +978,7 @@ mod tests {
             (EMPTY_METADATA_RULES,          "must not be empty"),
             (DUPLICATE_PARAM_RULES,         "parameter names must be unique"),
             (INVALID_PARAM_NAME_RULES,      "parameter names must be valid lowercase identifiers"),
-            (NEGATIVE_DEFAULT_RULES,        "integer parameter defaults must be non-negative"),
+            (NEGATIVE_DEFAULT_RULES,        NEGATIVE_INT_DEFAULT),
             (INT_WITH_ARRAY_DEFAULT_RULES,  "parameter type does not match"),
             (ARRAY_WITH_INT_DEFAULT_RULES,  "parameter type does not match"),
             (DUPLICATE_ARRAY_DEFAULT_RULES, "string-array parameter defaults must not contain duplicates"),

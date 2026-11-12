@@ -368,77 +368,41 @@ mod tests {
         Ok(())
     }
 
+    fn verify_fn_scope(body_line: &str) -> Result<()> {
+        let lines = vec![
+            "// #rw(fn: rust_panic) error reporting function",
+            "fn validate() {",
+            body_line,
+            "    let x = format!(\"a\");",
+            "}",
+            "fn other() {}",
+        ];
+        let mut errors = make_errors();
+        let sup = suppressed_lines("t.rs", &lines, &mut errors, None);
+
+        verify_true!(sup.lines.contains_key(&2))?;
+        verify_true!(sup.lines.contains_key(&3))?;
+        verify_true!(sup.lines.contains_key(&4))?;
+        verify_true!(sup.lines.contains_key(&5))?;
+        verify_false!(sup.lines.contains_key(&6))?;
+        verify_true!(errors.is_empty())?;
+
+        Ok(())
+    }
+
     #[gtest]
     fn fn_scope_works() -> Result<()> {
-        let lines = vec![
-            "// #rw(fn: rust_panic) error reporting function",
-            "fn validate() {",
-            "    let x = format!(\"a\");",
-            "    let y = format!(\"b\");",
-            "}",
-            "fn other() {}",
-        ];
-        let mut errors = make_errors();
-        let sup = suppressed_lines("t.rs", &lines, &mut errors, None);
-
-        verify_true!(sup.lines.contains_key(&2))?;
-        verify_true!(sup.lines.contains_key(&3))?;
-        verify_true!(sup.lines.contains_key(&4))?;
-        verify_true!(sup.lines.contains_key(&5))?;
-        verify_false!(sup.lines.contains_key(&6))?;
-        verify_true!(errors.is_empty())?;
-
-        Ok(())
+        verify_fn_scope("    let y = format!(\"b\");")
     }
 
     #[gtest]
-    // #rw(fn: rust_duplicate_strings) This linter scenario intentionally repeats source fixtures used to verify independent paths.
     fn fn_scope_ignores_braces_in_strings() -> Result<()> {
-        let lines = vec![
-            // #rw(rust_duplicate_strings) This linter fixture intentionally repeats source text across independent rule-harness scenarios.
-            "// #rw(fn: rust_panic) error reporting function",
-            "fn validate() {",
-            "    let s = \"{ not a real brace }\";",
-            "    let x = format!(\"a\");",
-            "}",
-            "fn other() {}",
-        ];
-        let mut errors = make_errors();
-        let sup = suppressed_lines("t.rs", &lines, &mut errors, None);
-
-        verify_true!(sup.lines.contains_key(&2))?;
-        verify_true!(sup.lines.contains_key(&3))?;
-        verify_true!(sup.lines.contains_key(&4))?;
-        verify_true!(sup.lines.contains_key(&5))?;
-        verify_false!(sup.lines.contains_key(&6))?;
-        verify_true!(errors.is_empty())?;
-
-        Ok(())
+        verify_fn_scope("    let s = \"{ not a real brace }\";")
     }
 
     #[gtest]
-    // #rw(fn: rust_duplicate_strings) This linter scenario intentionally repeats source fixtures used to verify independent paths.
     fn fn_scope_ignores_braces_in_comments() -> Result<()> {
-        let lines = vec![
-            // #rw(rust_duplicate_strings) This linter fixture intentionally repeats source text across independent rule-harness scenarios.
-            "// #rw(fn: rust_panic) error reporting function",
-            "fn validate() {",
-            "    // closing } here doesn't count",
-            "    let x = format!(\"a\");",
-            "}",
-            "fn other() {}",
-        ];
-        let mut errors = make_errors();
-        let sup = suppressed_lines("t.rs", &lines, &mut errors, None);
-
-        verify_true!(sup.lines.contains_key(&2))?;
-        verify_true!(sup.lines.contains_key(&3))?;
-        verify_true!(sup.lines.contains_key(&4))?;
-        verify_true!(sup.lines.contains_key(&5))?;
-        verify_false!(sup.lines.contains_key(&6))?;
-        verify_true!(errors.is_empty())?;
-
-        Ok(())
+        verify_fn_scope("    // closing } here doesn't count")
     }
 
     #[gtest]

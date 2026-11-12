@@ -17,7 +17,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "unsafe in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn t() { unsafe { std::ptr::null::<u8>().read() }; }\n}",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "safety comment with blank line",
@@ -35,7 +35,7 @@ crate::ast_rule!(
 
 fn check_unsafe_comment(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::BlockExpr>()
-        .filter(|block| block.unsafe_token().is_some() && !ctx.is_in_test(block))
+        .filter(|block| block.unsafe_token().is_some())
         .filter_map(|block| {
             let unsafe_token = block.unsafe_token()?;
             let line = ctx

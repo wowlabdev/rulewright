@@ -52,7 +52,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "manual future in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn f() -> impl Future<Output = ()> { async { } }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -66,9 +66,7 @@ crate::ast_rule!(
 fn check_manual_async_fn(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let eligible_functions = ctx
         .nodes::<ast::Fn>()
-        .filter(|function| {
-            super::support::is_item_or_impl_fn(function) && !ctx.is_in_test(function)
-        })
+        .filter(super::support::is_item_or_impl_fn)
         .filter(|function| !super::support::is_inside_trait(function));
     let future_functions = eligible_functions
         .filter(|function| {

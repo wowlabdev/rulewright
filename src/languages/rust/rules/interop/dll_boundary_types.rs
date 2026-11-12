@@ -62,7 +62,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "C export in test module",
         code: "#[cfg(test)]\nmod tests {\n    pub extern \"C\" fn f(s: String) {}\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -81,7 +81,7 @@ fn check_dll_boundary_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
     }
 
     ctx.nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function) && is_c_signature(function))
+        .filter(is_c_signature)
         .flat_map(|function| {
             let name = function.name().map(|name| name.text().to_string());
             let mut types: Vec<_> = function

@@ -35,7 +35,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "excessive precision in test",
         code: "#[cfg(test)]\nmod tests {\n    fn t() { let _x = 1.23456789012345_f32; }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -51,7 +51,6 @@ const F64_MAX_SIGNIFICANT: usize = 17;
 
 fn check_excessive_float_precision(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Literal>()
-        .filter(|literal| !ctx.is_in_test(literal))
         .filter_map(|literal| {
             let LiteralKind::FloatNumber(number) = literal.kind() else {
                 return None;

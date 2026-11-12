@@ -60,9 +60,19 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
-        label: "bare imported name passes",
+        label: "bare name without an import passes",
         code: "pub fn f(x: Value) {}",
         pass: true,
+    },
+    Example {
+        label: "imported external type",
+        code: "use serde_json::Value;\npub fn f(x: Value) {}",
+        pass: false,
+    },
+    Example {
+        label: "aliased external type",
+        code: "use toml::de::Error as TomlError;\npub enum E { Toml(TomlError) }",
+        pass: false,
     },
     Example {
         label: "private field on pub struct passes",
@@ -125,6 +135,17 @@ fn check_pub_api_foreign_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
     };
 
     external.retain(|root| !allowed.iter().any(|sanctioned| sanctioned == root));
+    let imports = super::super::support::Imports::of(ctx);
+    let external = external
+        .iter()
+        .map(|root| (root.clone(), root.clone()))
+        .chain(
+            imports
+                .roots()
+                .filter(|(_, root)| external.iter().any(|known| known == root))
+                .map(|(name, root)| (name.to_owned(), root.to_owned())),
+        )
+        .collect::<Vec<_>>();
     let mut violations = Vec::new();
 
     let public_functions = ctx
@@ -205,7 +226,7 @@ fn check_pub_api_foreign_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
     violations
 }
 
-fn foreign_roots(ty: &ast::Type, external: &[String]) -> Vec<(String, ast::NameRef)> {
+fn foreign_roots(ty: &ast::Type, external: &[(String, String)]) -> Vec<(String, ast::NameRef)> {
     ty.syntax()
         .descendants()
         .filter_map(ast::Path::cast)
@@ -214,15 +235,14 @@ fn foreign_roots(ty: &ast::Type, external: &[String]) -> Vec<(String, ast::NameR
             let names = super::support::path_names(path.clone());
             let root_name = names.first()?;
 
-            external.iter().any(|name| name == root_name).then(|| {
-                let root = path
-                    .syntax()
-                    .descendants()
-                    .filter_map(ast::NameRef::cast)
-                    .find(|name| name.text() == root_name.as_str())?;
+            let (_, crate_name) = external.iter().find(|(name, _)| name == root_name)?;
+            let root = path
+                .syntax()
+                .descendants()
+                .filter_map(ast::NameRef::cast)
+                .find(|name| name.text() == root_name.as_str())?;
 
-                Some((root_name.clone(), root))
-            })?
+            Some((crate_name.clone(), root))
         })
         .collect()
 }
@@ -231,7 +251,7 @@ fn report(
     ctx: &AstCtx<'_>,
     ty: &ast::Type,
     what: &str,
-    external: &[String],
+    external: &[(String, String)],
     violations: &mut Vec<Violation>,
 ) {
     for (name, root) in foreign_roots(ty, external) {
@@ -245,7 +265,7 @@ fn report(
 fn scan_signature(
     ctx: &AstCtx<'_>,
     function: &ast::Fn,
-    external: &[String],
+    external: &[(String, String)],
     violations: &mut Vec<Violation>,
 ) {
     if let Some(params) = function.param_list() {
@@ -277,6 +297,7 @@ mod tests {
                     "syn",
                     "taplo",
                     "tokio",
+                    "toml",
                     "wasm_bindgen",
                     "web_sys",
                     "winnow",

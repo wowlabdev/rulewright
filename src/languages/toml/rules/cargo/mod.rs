@@ -1,13 +1,14 @@
 //! Cargo manifest rules.
 
 mod edition;
+mod exact_versions;
 mod feature_names;
 mod feature_no_std;
 pub(crate) mod layers;
 mod msrv;
 mod path_deps;
 mod unused_deps;
-mod workspace_dep_features;
+pub(crate) mod workspace_dep_features;
 mod workspace_lints;
 
 use crate::TomlCtx;

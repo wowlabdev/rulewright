@@ -66,7 +66,7 @@ crate::ast_rule!(
 fn check_macro_hidden_items(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let quote_trees = ctx
         .nodes::<ast::MacroCall>()
-        .filter(|call| !ctx.is_in_test(call) && is_quote_call(call))
+        .filter(is_quote_call)
         .filter_map(|call| call.token_tree());
 
     quote_trees

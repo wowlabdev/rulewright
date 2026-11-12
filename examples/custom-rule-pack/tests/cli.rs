@@ -74,6 +74,20 @@ fn downstream_rule_participates_in_the_complete_cli() {
 
     fs::write(
         root.join("src/lib.rs"),
+        "//! Fixture.\n\n#[cfg(test)]\nmod tests {\n    // CUSTOM_PLACEHOLDER\n}\n",
+    )
+    .expect("test-module source should be written");
+    let in_test = run(&[
+        "--workspace-root",
+        &root_arg,
+        "--rule",
+        "custom_no_placeholder",
+    ]);
+    assert!(!in_test.status.success(), "pack line rules also see test code");
+    assert!(text(&in_test).contains("src/lib.rs:5"));
+
+    fs::write(
+        root.join("src/lib.rs"),
         "// #rw(custom_no_placeholder) fixture policy exception\npub fn value() { /* CUSTOM_PLACEHOLDER */ }\n",
     )
     .expect("suppressed source should be written");

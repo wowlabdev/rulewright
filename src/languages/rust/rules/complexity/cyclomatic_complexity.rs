@@ -64,7 +64,6 @@ fn check_cyclomatic_complexity(ctx: &AstCtx<'_>) -> Vec<Violation> {
     );
 
     ctx.nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function))
         .filter_map(|function| {
             function.body()?;
             let complexity = 1 + function
@@ -224,7 +223,7 @@ crate::rulewright_ast_test!(check_cyclomatic_complexity, {
     }
 
     #[gtest]
-    fn test_code_passes() -> Result<()> {
+    fn test_code_is_checked() -> Result<()> {
         let src = "#[cfg(test)]
         mod tests {
             fn f(x: bool) {
@@ -234,7 +233,7 @@ crate::rulewright_ast_test!(check_cyclomatic_complexity, {
                 if x { } if x { } if x { } if x { }
             }
         }";
-        verify_true!(run(src).is_empty())?;
+        verify_eq!(run(src).len(), 1)?;
 
         Ok(())
     }

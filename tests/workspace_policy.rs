@@ -1,4 +1,4 @@
-#![allow(
+#![expect(
     clippy::assert_is_empty,
     reason = "fixture assertions use explicit collection emptiness"
 )]
@@ -177,6 +177,8 @@ fn layer_rules_cover_renamed_inherited_dev_build_and_target_edges() {
         "rules=['bad']",
         "rules=['server/** !> ']",
         "rules=['[ !> dep']",
+        "rules=['server/** !> dep (runtime)']",
+        "rules=['server/** => dep, ']",
     ] {
         let cfg = config("toml_cargo_layers", invalid);
         let registry = RuleRegistry::with_builtins().unwrap();
@@ -192,6 +194,53 @@ fn layer_rules_cover_renamed_inherited_dev_build_and_target_edges() {
                 .is_empty()
         );
     }
+}
+
+#[test]
+fn layer_edges_can_be_limited_to_dependency_kinds() {
+    let manifest = "[package]\nname='lib'\n[dependencies]\nkit='1'\n[dev-dependencies]\nkit='1'";
+    let findings = check(
+        "toml_cargo_layers",
+        "rules = ['lib/Cargo.toml !> kit (normal, build)']",
+        &[("lib/Cargo.toml", manifest)],
+    );
+
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert_eq!(findings[0].line, 4);
+}
+
+#[test]
+fn allow_edges_list_the_complete_dependency_set() {
+    let root = "[workspace]\nmembers=[]\n[workspace.dependencies]\nnum={path='num'}";
+    let manifest = "[package]\nname='calc'\n[dependencies]\nnum.workspace=true\nids={path='../ids'}\nserde='1'\n[dev-dependencies]\nkit={path='../kit'}";
+    let sources = |manifest: &'static str| {
+        [
+            ("Cargo.toml", root),
+            ("calc/Cargo.toml", manifest),
+            ("num/Cargo.toml", "[package]\nname='num'"),
+            ("ids/Cargo.toml", "[package]\nname='ids'"),
+            ("kit/Cargo.toml", "[package]\nname='kit'"),
+        ]
+    };
+    let lines = |policy: &str| {
+        let mut lines = check("toml_cargo_layers", policy, &sources(manifest))
+            .iter()
+            .map(|finding| finding.line)
+            .collect::<Vec<_>>();
+
+        lines.sort_unstable();
+        lines
+    };
+
+    assert_eq!(lines("rules = ['calc/Cargo.toml => num, serde']"), [5, 8]);
+    assert_eq!(
+        lines(
+            "rules = ['calc/Cargo.toml => num', '*/Cargo.toml => serde, ids/Cargo.toml (normal)']"
+        ),
+        [8]
+    );
+    assert_eq!(lines("rules = ['calc/Cargo.toml => (normal)']"), [4, 5, 6]);
+    assert!(lines("rules = ['other/Cargo.toml =>']").is_empty());
 }
 
 #[test]

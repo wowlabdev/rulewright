@@ -67,10 +67,7 @@ fn check_unsafe_without_ub_surface(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .nodes::<ast::Fn>()
         .filter(is_item_or_impl_fn)
         .filter(|function| {
-            !ctx.is_in_test(function)
-                && function.unsafe_token().is_some()
-                && function.abi().is_none()
-                && !is_no_mangle(function)
+            function.unsafe_token().is_some() && function.abi().is_none() && !is_no_mangle(function)
         });
 
     unsafe_functions

@@ -62,7 +62,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "sensitive struct in test module",
         code: "#[cfg(test)]\nmod tests {\n    #[derive(Debug)]\n    struct Creds { password: String }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -102,7 +102,7 @@ fn check_sensitive_debug(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let redacted = redacted_types(ctx);
 
     ctx.nodes::<ast::Struct>()
-        .filter(|item| !ctx.is_in_test(item) && has_debug_derive(item))
+        .filter(has_debug_derive)
         .filter_map(|item| {
             let sensitive = find_sensitive_fields(&item, &markers, &allowed, &redacted);
             let name = item.name()?;

@@ -30,7 +30,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "compound assign in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn t() { let mut x = 0; debug_assert!({ x += 1; x > 0 }); }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -46,7 +46,6 @@ const MAX_COMPOUND_OPERATOR_LEN: usize = 3;
 
 fn check_assert_side_effects(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::MacroCall>()
-        .filter(|call| !ctx.is_in_test(call))
         .filter_map(|call| {
             let name = macro_name(&call)?;
 

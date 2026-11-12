@@ -85,7 +85,7 @@ crate::ast_rule!(
 
 fn check_map_err_pure_wrap(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::MethodCallExpr>()
-        .filter(|call| !ctx.is_in_test(call) && !is_in_trait_impl(call))
+        .filter(|call| !is_in_trait_impl(call))
         .filter_map(|call| {
             let method = call.name_ref()?;
 

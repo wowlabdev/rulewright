@@ -53,7 +53,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "wide constructor in test module",
         code: "#[cfg(test)]\nmod tests {\n    struct Acc;\n    impl Acc {\n        pub fn new(a: u32, b: u32, c: u32, d: u32) -> Self {\n            Acc\n        }\n    }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -80,7 +80,7 @@ fn check_ctor_param_count(ctx: &AstCtx<'_>) -> Vec<Violation> {
     );
 
     ctx.nodes::<ast::Impl>()
-        .filter(|item| !ctx.is_in_test(item) && item.trait_().is_none())
+        .filter(|item| item.trait_().is_none())
         .flat_map(|item| {
             let Some(ty) = item.self_ty().and_then(|ty| type_name(&ty)) else {
                 return Vec::new();

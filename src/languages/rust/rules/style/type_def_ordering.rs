@@ -63,7 +63,6 @@ fn check_type_def_ordering(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .collect();
     let type_lines: HashMap<String, usize> = items
         .iter()
-        .filter(|item| !ctx.is_in_test(*item))
         .filter_map(|item| match item {
             ast::Item::Struct(item) => item
                 .name()
@@ -78,10 +77,6 @@ fn check_type_def_ordering(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .collect();
 
     for item in items {
-        if ctx.is_in_test(&item) {
-            continue;
-        }
-
         if let ast::Item::Impl(item_impl) = item {
             if item_impl.trait_().is_some() {
                 continue;

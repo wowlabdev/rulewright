@@ -1,3 +1,5 @@
+//! Bidirectional-control and confusable character checks shared by Rust and TOML rules.
+
 use crate::{FileCtx, Violation, violation};
 
 const BIDI_CONTROLS: &[char] = &[

@@ -25,7 +25,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "large enum in test",
         code: "#[cfg(test)]\nmod tests {\n    enum Msg { Small(u8), Large([u8; 1024]) }\n}",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "single variant enum",
@@ -62,10 +62,7 @@ fn check_large_enum_variant(ctx: &AstCtx<'_>) -> Vec<Violation> {
     );
     let mut violations = Vec::new();
 
-    for item in ctx
-        .nodes::<ast::Enum>()
-        .filter(|item| !ctx.is_in_test(item))
-    {
+    for item in ctx.nodes::<ast::Enum>() {
         let Some(variants) = item.variant_list() else {
             continue;
         };

@@ -47,7 +47,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "loop in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn f() { loop { if !cond() { break; } do_work(); } }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -61,8 +61,7 @@ crate::ast_rule!(
 fn check_loop_to_while(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::LoopExpr>()
         .filter(|loop_expr| {
-            !ctx.is_in_test(loop_expr)
-                && loop_expr.label().is_none()
+            loop_expr.label().is_none()
                 && loop_expr
                     .loop_body()
                     .is_some_and(|body| is_break_guard(&body))

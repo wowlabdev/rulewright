@@ -1,6 +1,8 @@
 // #rw(file: rust_default_hasher) clean is a cold developer-tool path with trusted rule-name keys and explicit edit reports
 // #rw(file: rust_inline_test_module_size) cleanup tests require private directive and edit helpers
 
+//! Removal of suppression directives that no longer hide a finding.
+
 use std::{
     collections::{BTreeSet, HashSet},
     process::ExitCode,

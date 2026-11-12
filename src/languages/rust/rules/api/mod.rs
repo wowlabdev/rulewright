@@ -24,7 +24,7 @@ mod pub_api_docs;
 mod pub_api_generic_nesting;
 mod pub_api_smart_pointers;
 mod public_error_enum;
-mod similar_fns;
+pub(crate) mod similar_fns;
 mod single_item_path;
 mod string_error;
 pub(super) mod support;

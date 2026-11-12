@@ -22,6 +22,16 @@ allow_suppressions = false
 
 With that policy, `#rw(...)` produces a `rust_rulewright_directives` finding and does not suppress its target. Layout markers such as `#rw:aligned` and `#rw:sorted(asc)` are unaffected because they opt into checks instead of hiding findings.
 
+## Cache inputs
+
+Rulewright caches results keyed by the contents of Rust and TOML files, the configuration, the rule registry, and the paths of all walked files. A rule that reads another file itself, such as a pack rule that loads a CSV or Markdown list, must have that file declared, or an edit to it returns a stale cached result:
+
+```toml
+cache_inputs = ["data/**/*.csv", "docs/crates.md"]
+```
+
+Entries are workspace-relative globs or `[glob_sets]` names. The contents of every walked file they match enter the cache key; a change invalidates all cached results and widens `--dirty` runs. Files excluded from walking, for example by `.gitignore`, are not seen.
+
 ## Rule entries
 
 `rulewright --init` emits every rule from the active registry, including downstream packs:
@@ -55,17 +65,32 @@ threshold = 900
 
 Override `paths` must be nonempty and may reference named glob sets. Every override key must be a declared parameter of the correct type (`i64`, `bool`, or `[String]`); overrides cannot change enablement, ignores, or positive scopes. Unspecified values inherit the base parameters. Matching overrides apply in declaration order, with the last supplied value winning. `--parse-config` includes expanded `only` and override paths. File rules look up values at the current file; workspace rules use the finding's path for thresholds and the input file's path for record eligibility. Pair/group rules use their deterministic finding anchor for comparison thresholds.
 
-`only` and `ignore` filter workspace input records and the file inventory. The layer rule keeps the full manifest graph for resolving destination package identities while applying scopes to dependency origins.
+`only` and `ignore` filter workspace input records and the file inventory. Ignoring a path removes it from every comparison of a pair rule; to keep two areas apart while still checking each of them, `rust_similar_fns` takes `uncompared` entries:
+
+```toml
+[rules.rust_similar_fns]
+enabled = true
+ignore = []
+jaccard_percent = 85
+min_tokens = 40
+uncompared = ["crates/exec-fast/** | crates/exec-reference/**"]
+```
+
+Functions in different `|`-separated groups of one entry are not compared with each other; each group is still compared within itself and with every other path. The layer rule keeps the full manifest graph for resolving destination package identities while applying scopes to dependency origins.
 
 ## Cargo dependency policy
 
-Both Cargo rules are generic and cover normal, dev, build, and target-specific dependency tables, including table-form declarations and renamed dependencies.
+The Cargo dependency rules are generic and cover normal, dev, build, and target-specific dependency tables, including table-form declarations and renamed dependencies.
 
 ```toml
 [rules.toml_cargo_layers]
 enabled = true
 ignore = []
-rules = ["services/** !> engine-*,adapters/private/**"]
+rules = [
+    "services/** !> engine-*,adapters/private/**",
+    "crates/core/Cargo.toml => serde, thiserror",
+    "crates/*/Cargo.toml !> test-kit (normal, build)",
+]
 
 [rules.toml_cargo_path_deps]
 enabled = true
@@ -75,7 +100,19 @@ allow_outside_workspace = false
 allow_patch = false
 ```
 
-Layer edges have the grammar `manifest-glob !> dependency-glob,dependency-glob`. The right side matches the dependency key, resolved renamed package name (including workspace inheritance), or a known destination manifest path. An empty edge list imposes no boundaries. Invalid edge syntax and globs are configuration errors.
+Layer edges have the grammar `manifest-glob !> dependency-glob,...` (deny) or `manifest-glob => dependency-glob,...` (allow). The right side matches the dependency key, resolved renamed package name (including workspace inheritance), or a known destination manifest path. A deny edge reports every matching dependency. Allow edges list the complete set of dependencies, workspace packages and third-party crates alike, that a matching manifest may declare: the targets of all allow edges matching a manifest are combined, anything outside them is reported, and `manifest-glob =>` with no targets allows nothing. A manifest that no allow edge matches is not restricted by allow edges. A trailing `(normal, build, dev)` limits an edge to those dependency kinds; without it an edge covers all three. An empty edge list imposes no boundaries. Invalid edge syntax, kinds, and globs are configuration errors.
+
+`toml_cargo_workspace_dep_features` keeps `[workspace.dependencies]` to versions: `allowed_features` lists features any entry may enable, and each `crate_features` entry grants more to one dependency key:
+
+```toml
+[rules.toml_cargo_workspace_dep_features]
+enabled = true
+ignore = []
+allowed_features = ["derive", "std"]
+crate_features = ["toml: parse, serde"]
+```
+
+`toml_cargo_exact_versions` (off by default) requires every declared version requirement, in `[workspace.dependencies]` and in member dependency tables, to be an exact `=major.minor.patch`. Combined with allow edges in `toml_cargo_layers`, it states which third-party crates each manifest may use and at which version.
 
 Path policy checks declaration locations, including virtual roots' `[workspace.dependencies]` and `[patch.<source>]`. Workspace inheritance is checked at its root declaration. `allow_in` restricts manifests that may declare paths; `allow_patch` additionally permits path-bearing patches. `allow_outside_workspace` controls lexical absolute paths and `..` escapes relative to the declaring manifest. This check does not resolve filesystem symlinks or inspect ignored files; it is a manifest policy, not a filesystem sandbox. None of these rules supplies automatic fixes.
 
@@ -92,6 +129,8 @@ ignore = ["@generated"]
 
 Ignore patterns are matched against slash-separated paths relative to the workspace root. `*` stays within one path component and `**` crosses directories, so `**/*_tests.rs` covers split test modules at the root and at any nesting depth, while `crates/example-tests/**` covers an entire workspace member. Invalid patterns are rejected while loading the configuration instead of silently matching nothing. Rulewright normalizes discovered Windows paths before matching them.
 
+Rules apply to test code as well as production code. The exceptions are rules whose subject does not exist in tests or whose policy is deliberately different there: public API, error-type and documentation rules, panic, process-exit, `unwrap`, `expect` and assertion-message rules, console and logging output, ambient I/O, performance rules, magic numbers, lossy casts, float equality, unchecked indexing, wildcard imports, and URL literals. Size, shape, signature, duplication, ordering, layout, naming, and safety rules all reach test files, inline test modules, and test-only packages.
+
 Cargo test, benchmark, and example targets are classified as test code from Cargo metadata. That classification follows their `mod`, `#[path = "..."]`, and `include!("...")` edges, as does any Rust file reached only through `#[cfg(test)] mod ...`; physical filenames are not used as a substitute for the module graph.
 
 A workspace member built only as test infrastructure can declare that all of its Rust targets are test-only:
@@ -101,7 +140,7 @@ A workspace member built only as test infrastructure can declare that all of its
 test-only = true
 ```
 
-Use this only for dedicated fixture or test-harness packages. A package containing production library or binary code should leave it unset.
+Use this only for dedicated fixture or test-harness packages. A package containing production library or binary code should leave it unset. Test-only packages are still checked by every rule that applies to test code.
 
 Normal runs warn about missing and unknown rule entries; missing entries are backfilled in memory. `--strict` turns all configuration warnings into errors. Unknown parameters, invalid parameter types, duplicate list values, and values outside a parameter's declared choices are always errors. For example, `rust_padding.boundaries` accepts `functions`, `control-flow`, `let-runs`, `returns`, and `tail-expressions`. `--parse-config <PATH>` prints the resolved rule configuration as JSON.
 

@@ -383,3 +383,21 @@ fn load_reports_parse_failures_with_the_config_path() -> Result<()> {
         displays_as(contains_substring(path.display().to_string()))
     )
 }
+
+#[gtest]
+fn validate_rejects_malformed_uncompared_groups() -> Result<()> {
+    const DEFAULTS: &[&str] = &[];
+    const PARAMS: &[RuleParam] = &[RuleParam {
+        name: "uncompared",
+        param_type: ParamType::StringArray,
+        default: ParamDefault::StringArray(DEFAULTS),
+        allowed_values: &[],
+    }];
+    let cfg = parse("[rules.rust_similar_fns]\nenabled = true\nuncompared = [\"crates/a/**\"]\n");
+    let (errors, _) = cfg.validate(&[("rust_similar_fns", PARAMS)]);
+
+    verify_that!(
+        errors,
+        contains(contains_substring("invalid uncompared entry"))
+    )
+}

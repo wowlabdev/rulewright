@@ -61,15 +61,11 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     doc_errors_section,
     "Require a `# Errors` section on documented pub fns returning `Result`.",
-    "Callers of publishable packages need failure conditions listed; canonical docs put them under `# Errors`. Packages that explicitly set `publish = false` are treated as internal workspace implementation and skipped.",
+    "Callers need failure conditions listed, whether the package is published or only used inside the workspace; canonical docs put them under `# Errors`.",
     Medium,
 );
 
 fn check_doc_errors_section(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    if ctx.file.is_explicitly_non_publishable() {
-        return Vec::new();
-    }
-
     ctx.nodes::<ast::Fn>()
         .filter(is_item_or_impl_fn)
         .filter(|function| !ctx.is_in_test(function) && is_fully_public(function))
@@ -117,7 +113,7 @@ crate::rulewright_ast_test!(check_doc_errors_section, {
     crate::example_tests!(EXAMPLES, check_doc_errors_section);
 
     #[test]
-    fn package_publishability_controls_downstream_error_docs() {
+    fn unpublished_packages_are_checked() {
         let source = "/// Parses input.\npub fn parse() -> Result<(), Error> { Ok(()) }";
 
         assert_eq!(
@@ -129,13 +125,14 @@ crate::rulewright_ast_test!(check_doc_errors_section, {
             .len(),
             1
         );
-        assert!(
+        assert_eq!(
             crate::test_support::check_source_ast_publishability(
                 source,
                 false,
-                check_doc_errors_section,
+                check_doc_errors_section
             )
-            .is_empty()
+            .len(),
+            1
         );
         assert_eq!(
             crate::test_support::check_source_ast_publishability(

@@ -70,8 +70,7 @@ fn is_fully_public(visibility: Option<ast::Visibility>) -> bool {
 fn check_subtractive_feature_cfg(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let public_items = ctx
         .nodes::<ast::Item>()
-        .filter(|item| !matches!(item, ast::Item::Fn(_)))
-        .filter(|item| !ctx.is_in_test(item));
+        .filter(|item| !matches!(item, ast::Item::Fn(_)));
     let item_attrs = public_items
         .filter(|item| {
             item.syntax()
@@ -83,7 +82,6 @@ fn check_subtractive_feature_cfg(ctx: &AstCtx<'_>) -> Vec<Violation> {
         .filter(is_not_feature_cfg);
     let public_functions = ctx
         .nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function))
         .filter(|function| is_fully_public(function.visibility()));
     let function_attrs = public_functions
         .flat_map(|function| function.attrs())

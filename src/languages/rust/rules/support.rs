@@ -1,7 +1,99 @@
+use std::collections::BTreeMap;
+
 use ra_ap_syntax::{
     AstNode, Edition, SourceFile, SyntaxElement, SyntaxNode,
-    ast::{self, HasModuleItem, LiteralKind},
+    ast::{self, HasModuleItem, HasName, LiteralKind},
 };
+
+use crate::AstCtx;
+
+/// Names bound by the file's `use` items, mapped to the paths they import.
+///
+/// Glob imports are skipped, and a name bound to different paths in one file is dropped.
+pub(super) struct Imports(BTreeMap<String, Vec<String>>);
+
+impl Imports {
+    pub(super) fn of(ctx: &AstCtx<'_>) -> Self {
+        let mut imports = BTreeMap::<String, Option<Vec<String>>>::new();
+        let mut pending = ctx
+            .nodes::<ast::Use>()
+            .filter_map(|item| item.use_tree())
+            .map(|tree| (tree, Vec::new()))
+            .collect::<Vec<_>>();
+
+        while let Some((tree, prefix)) = pending.pop() {
+            let mut path = prefix;
+
+            if let Some(own) = tree.path() {
+                path.extend(path_names(&own));
+            }
+
+            if let Some(list) = tree.use_tree_list() {
+                pending.extend(list.use_trees().map(|child| (child, path.clone())));
+            } else if tree.star_token().is_none() {
+                bind(&tree, path, &mut imports);
+            }
+        }
+
+        Self(
+            imports
+                .into_iter()
+                .filter_map(|(name, path)| Some((name, path?)))
+                .collect(),
+        )
+    }
+
+    /// Each imported name with the first segment of the path it was imported from.
+    pub(super) fn roots(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.0
+            .iter()
+            .filter_map(|(name, path)| Some((name.as_str(), path.first()?.as_str())))
+    }
+
+    /// Replace a leading imported name with the path it was imported from.
+    pub(super) fn resolve(&self, segments: Vec<String>) -> Vec<String> {
+        let Some((first, rest)) = segments.split_first() else {
+            return segments;
+        };
+
+        match self.0.get(first) {
+            Some(path) => path.iter().chain(rest).cloned().collect(),
+            None => segments,
+        }
+    }
+}
+
+fn bind(
+    tree: &ast::UseTree,
+    mut path: Vec<String>,
+    imports: &mut BTreeMap<String, Option<Vec<String>>>,
+) {
+    if path.last().is_some_and(|last| last == "self") {
+        path.pop();
+    }
+
+    let name = match tree.rename() {
+        Some(rename) => match rename.name() {
+            Some(name) => name.text().to_string(),
+            None => return,
+        },
+
+        None => match path.last() {
+            Some(last) => last.clone(),
+            None => return,
+        },
+    };
+
+    if path.len() < 2 || name == "_" {
+        return;
+    }
+
+    let entry = imports.entry(name).or_insert_with(|| Some(path.clone()));
+
+    if entry.as_ref().is_some_and(|known| *known != path) {
+        *entry = None;
+    }
+}
 
 pub(super) fn compact_syntax(node: &SyntaxNode) -> String {
     node.descendants_with_tokens()

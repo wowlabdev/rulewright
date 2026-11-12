@@ -52,7 +52,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "&String in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn f(x: &String) {}\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -72,9 +72,7 @@ const OWNED_REF_SUGGESTIONS: &[(&str, &str)] = &[
 
 fn check_owned_ref_param(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::Fn>()
-        .filter(|function| {
-            super::support::is_item_or_impl_fn(function) && !ctx.is_in_test(function)
-        })
+        .filter(super::support::is_item_or_impl_fn)
         .flat_map(|function| {
             function
                 .param_list()

@@ -22,7 +22,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "redundant in test",
         code: "#[cfg(test)]\nmod tests {\n    struct S { x: i32 }\n    fn t(x: i32) -> S { S { x: x } }\n}",
-        pass: true,
+        pass: false,
     },
 ];
 
@@ -36,7 +36,7 @@ crate::ast_rule!(
 
 fn check_redundant_field_names(ctx: &AstCtx<'_>) -> Vec<Violation> {
     ctx.nodes::<ast::RecordExprField>()
-        .filter(|field| !ctx.is_in_test(field) && field.colon_token().is_some())
+        .filter(|field| field.colon_token().is_some())
         .filter_map(|field| {
             let name = field.name_ref()?;
             let ast::Expr::PathExpr(path) = field.expr()? else {

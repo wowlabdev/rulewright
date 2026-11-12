@@ -195,6 +195,10 @@ fn extract_dependencies(
                     .get("package")
                     .and_then(toml::Value::as_str)
                     .map(str::to_owned),
+                version: value
+                    .as_str()
+                    .or_else(|| value.get("version").and_then(toml::Value::as_str))
+                    .map(str::to_owned),
             }
         })
         .collect()

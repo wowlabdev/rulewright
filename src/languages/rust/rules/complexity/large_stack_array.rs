@@ -1,4 +1,4 @@
-use ra_ap_syntax::ast;
+use ra_ap_syntax::{AstNode, ast};
 
 use super::support;
 use crate::{AstCtx, Example, Violation};
@@ -18,6 +18,11 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "large array in test",
         code: "#[cfg(test)]\nmod tests {\n    fn t() { let _buf = [0u8; 8192]; }\n}",
+        pass: false,
+    },
+    Example {
+        label: "static table lives in static memory",
+        code: "pub static TABLE: [u64; 1024] = [0; 1024];",
         pass: true,
     },
     Example {
@@ -62,6 +67,13 @@ crate::ast_rule!(
     },
 );
 
+/// Whether the nearest enclosing item is a `static`, whose storage is not on the stack.
+fn in_static(node: &ra_ap_syntax::SyntaxNode) -> bool {
+    node.ancestors()
+        .find_map(ast::Item::cast)
+        .is_some_and(|item| matches!(item, ast::Item::Static(_)))
+}
+
 fn check_large_stack_array(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let max_stack_bytes = ctx.file.config.get_u64(
         "rust_large_stack_array",
@@ -70,7 +82,7 @@ fn check_large_stack_array(ctx: &AstCtx<'_>) -> Vec<Violation> {
     );
     let type_arrays = ctx
         .nodes::<ast::ArrayType>()
-        .filter(|array| !ctx.is_in_test(array))
+        .filter(|array| !in_static(array.syntax()))
         .filter_map(|array| {
             let size = support::estimate_type_size(&ast::Type::ArrayType(array.clone()))?;
 
@@ -85,7 +97,7 @@ fn check_large_stack_array(ctx: &AstCtx<'_>) -> Vec<Violation> {
         });
     let repeat_arrays = ctx
         .nodes::<ast::ArrayExpr>()
-        .filter(|array| !ctx.is_in_test(array) && array.semicolon_token().is_some())
+        .filter(|array| !in_static(array.syntax()) && array.semicolon_token().is_some())
         .filter_map(|array| {
             let mut expressions = array.exprs();
             let element = expressions.next()?;

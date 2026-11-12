@@ -1,3 +1,5 @@
+//! Classification of Rust files that only test targets reach.
+
 use std::collections::HashSet;
 
 use ra_ap_syntax::{

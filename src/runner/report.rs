@@ -1,5 +1,7 @@
 // #rw(file: rust_default_hasher) trusted rule-name sets in the cold report path; fast-hasher dependency not warranted
 
+//! Human, JSON, and suppression reports.
+
 use std::{collections::BTreeMap, io::Write as _, process::ExitCode};
 
 use crate::output;

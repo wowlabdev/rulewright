@@ -1,3 +1,5 @@
+//! Cross-file records extracted for workspace rules.
+
 use crate::checksum::{self, Checksum};
 use ra_ap_syntax::{
     AstNode, SyntaxKind,
@@ -49,6 +51,8 @@ pub struct DependencyRecord {
     pub source: DependencySource,
     /// Explicit renamed package identity, if supplied.
     pub package: Option<String>,
+    /// Declared version requirement, if any; inherited entries carry none.
+    pub version: Option<String>,
 }
 
 /// Cargo dependency kind, independent of its target condition.
@@ -124,16 +128,14 @@ pub(crate) fn extract(
     file: &FileCtx<'_>,
     root: &ast::SourceFile,
     suppressions: Suppressions,
-    test_only_file: bool,
 ) -> WorkspaceRustFile {
     let crate_roots = crate_roots(root);
 
-    if test_only_file
-        || file
-            .contents
-            .lines()
-            .take(GENERATED_HEADER_LINES)
-            .any(|line| line.contains("@generated"))
+    if file
+        .contents
+        .lines()
+        .take(GENERATED_HEADER_LINES)
+        .any(|line| line.contains("@generated"))
     {
         return empty_workspace_file(file, crate_roots, suppressions);
     }
@@ -146,7 +148,6 @@ pub(crate) fn extract(
         .syntax()
         .descendants()
         .filter_map(ast::Struct::cast)
-        .filter(|item| !in_test(item.syntax()))
         .filter_map(|item| {
             let fields = item.field_list()?;
             let ast::FieldList::RecordFieldList(fields) = fields else {
@@ -176,7 +177,7 @@ pub(crate) fn extract(
         .syntax()
         .descendants()
         .filter_map(ast::Fn::cast)
-        .filter(|function| !in_test(function.syntax()) && !in_trait_impl(function))
+        .filter(|function| !in_trait_impl(function))
         .filter_map(|function| {
             let name_node = function.name()?;
             let name = name_node.text().to_string();
@@ -257,13 +258,8 @@ pub(crate) fn extract(
 
                     name.starts_with("rulewright_") && name.contains("_test")
                 });
-            let in_test = token.parent().is_some_and(|parent| in_test(&parent));
 
-            !in_examples
-                && !in_attribute
-                && !in_macro_lint_reason
-                && !in_rulewright_test
-                && !in_test
+            !in_examples && !in_attribute && !in_macro_lint_reason && !in_rulewright_test
         })
         .map(|token| StringRecord {
             value: token.text().to_owned(),
@@ -412,15 +408,6 @@ fn normalized(node: &ra_ap_syntax::SyntaxNode) -> String {
         .filter(|token| !token.kind().is_trivia())
         .map(|token| token.text().to_owned())
         .collect()
-}
-
-fn in_test(node: &ra_ap_syntax::SyntaxNode) -> bool {
-    node.ancestors().filter_map(ast::Item::cast).any(|item| {
-        use ra_ap_syntax::ast::HasAttrs;
-
-        item.attrs()
-            .any(|attr| attr.syntax().text().to_string().contains("cfg(test)"))
-    })
 }
 
 fn in_trait_impl(function: &ast::Fn) -> bool {

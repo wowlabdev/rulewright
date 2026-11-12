@@ -1,3 +1,5 @@
+//! Count-aware finding baselines.
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};

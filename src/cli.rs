@@ -590,9 +590,10 @@ fn handle_init(registry: &RuleRegistry, config_path: &Path) -> ExitCode {
     match atomic::create(config_path, config.to_toml_string()) {
         Ok(()) => {
             output::success(&format!(
-                "created {} with {} rules enabled",
+                "created {} with {} rules ({} enabled)",
                 config_path.display(),
-                metadata.len()
+                metadata.len(),
+                metadata.iter().filter(|rule| rule.default_enabled).count()
             ));
 
             ExitCode::SUCCESS

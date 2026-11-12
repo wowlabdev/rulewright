@@ -87,14 +87,10 @@ const EXAMPLES: &[Example] = &[
 crate::ast_rule!(
     pub_api_docs,
     "Require doc comments on public items.",
-    "Undocumented public items force users to read source code. Doc comments generate searchable API documentation for publishable packages; packages that explicitly set `publish = false` are treated as internal workspace implementation and skipped.",
+    "Undocumented public items force users to read source code. Doc comments generate searchable API documentation for every package, published or used only inside the workspace.",
 );
 
 fn check_pub_api_docs(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    if ctx.file.is_explicitly_non_publishable() {
-        return Vec::new();
-    }
-
     let functions = ctx
         .nodes::<ast::Fn>()
         .filter_map(|item| missing_docs(ctx, &item, "function"));
@@ -155,7 +151,7 @@ crate::rulewright_ast_test!(check_pub_api_docs, {
     crate::example_tests!(EXAMPLES, check_pub_api_docs);
 
     #[test]
-    fn package_publishability_controls_downstream_api_docs() {
+    fn unpublished_packages_are_checked() {
         let source = "pub fn undocumented() {}";
 
         assert_eq!(
@@ -163,13 +159,10 @@ crate::rulewright_ast_test!(check_pub_api_docs, {
                 .len(),
             1
         );
-        assert!(
-            crate::test_support::check_source_ast_publishability(
-                source,
-                false,
-                check_pub_api_docs,
-            )
-            .is_empty()
+        assert_eq!(
+            crate::test_support::check_source_ast_publishability(source, false, check_pub_api_docs)
+                .len(),
+            1
         );
         assert_eq!(
             crate::test_support::check_source_ast_publishability(source, true, check_pub_api_docs,)

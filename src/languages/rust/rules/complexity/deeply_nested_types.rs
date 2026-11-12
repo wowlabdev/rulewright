@@ -32,7 +32,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "deep nesting in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn f(x: Vec<Vec<HashMap<String, Vec<i32>>>>) {}\n}",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "reference to depth 4 fails",
@@ -77,27 +77,19 @@ const MAX_DEPTH: usize = 3;
 fn check_deeply_nested_types(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let fields = ctx
         .nodes::<ast::RecordField>()
-        .filter(|field| !ctx.is_in_test(field))
         .filter_map(|field| field.ty());
     let tuple_fields = ctx
         .nodes::<ast::TupleField>()
-        .filter(|field| !ctx.is_in_test(field))
         .filter_map(|field| field.ty());
-    let locals = ctx
-        .nodes::<ast::LetStmt>()
-        .filter(|local| !ctx.is_in_test(local))
-        .filter_map(|local| local.ty());
-    let signatures = ctx
-        .nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function))
-        .flat_map(|function| {
-            function
-                .param_list()
-                .into_iter()
-                .flat_map(|parameters| parameters.params())
-                .filter_map(|parameter| parameter.ty())
-                .chain(function.ret_type().and_then(|return_type| return_type.ty()))
-        });
+    let locals = ctx.nodes::<ast::LetStmt>().filter_map(|local| local.ty());
+    let signatures = ctx.nodes::<ast::Fn>().flat_map(|function| {
+        function
+            .param_list()
+            .into_iter()
+            .flat_map(|parameters| parameters.params())
+            .filter_map(|parameter| parameter.ty())
+            .chain(function.ret_type().and_then(|return_type| return_type.ty()))
+    });
 
     fields
         .chain(tuple_fields)

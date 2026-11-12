@@ -42,7 +42,6 @@ fn check_large_fn_params(ctx: &AstCtx<'_>) -> Vec<Violation> {
     );
 
     ctx.nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function))
         .filter_map(|function| {
             let count = function.param_list()?.params().count();
 

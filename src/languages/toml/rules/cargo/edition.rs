@@ -183,6 +183,7 @@ mod tests {
     use super::*;
 
     #[gtest]
+    // #rw(fn: rust_similar_fns) each rule keeps its own example loop over its own fixture path
     fn examples() -> Result<()> {
         for example in EXAMPLES {
             let rel = if example.code.contains("[workspace") {

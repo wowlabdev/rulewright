@@ -28,7 +28,7 @@ const EXAMPLES: &[Example] = &[
     Example {
         label: "recursion in test module",
         code: "#[cfg(test)]\nmod tests {\n    fn factorial(n: u64) -> u64 { if n <= 1 { 1 } else { n * factorial(n - 1) } }\n}",
-        pass: true,
+        pass: false,
     },
     Example {
         label: "calling different function",
@@ -82,10 +82,7 @@ crate::ast_rule!(
 fn check_recursive_fn(ctx: &AstCtx<'_>) -> Vec<Violation> {
     let mut violations = Vec::new();
 
-    for function in ctx
-        .nodes::<ast::Fn>()
-        .filter(|function| !ctx.is_in_test(function))
-    {
+    for function in ctx.nodes::<ast::Fn>() {
         let Some(name) = function.name() else {
             continue;
         };
