@@ -15,6 +15,16 @@ const EXAMPLES: &[Example] = &[
         pass: true,
     },
     Example {
+        label: "out-of-line test module",
+        code: "#[cfg(test)]\nmod tests;",
+        pass: true,
+    },
+    Example {
+        label: "production-only module",
+        code: "#[cfg(not(test))]\nmod real {\n    fn r() {}\n}",
+        pass: true,
+    },
+    Example {
         label: "non-test module",
         code: "mod helpers {\n    fn h() {}\n}",
         pass: true,
@@ -23,8 +33,8 @@ const EXAMPLES: &[Example] = &[
 
 crate::ast_rule!(
     inline_test_module_size,
-    "Flag inline `#[cfg(test)] mod` blocks exceeding the configured nonblank-line threshold.",
-    "Oversized inline test modules drown the implementation in the same file. Move private unit tests to a sibling `#[path]` module, or public-API tests to `tests/`.",
+    "Flag inline `#[cfg(test)] mod` bodies exceeding the configured nonblank-line threshold; out-of-line `mod tests;` declarations are allowed.",
+    "Oversized inline test modules drown the implementation in the same file. Move private unit tests to a sibling module file declared with `#[cfg(test)] mod tests;`, or public-API tests to `tests/`. The count includes the braces, so a threshold of 0 forbids every inline test module body.",
     Low,
     params {
         threshold: i64 = 200
@@ -62,14 +72,9 @@ fn check_inline_test_module_size(ctx: &AstCtx<'_>) -> Vec<Violation> {
 }
 
 fn is_cfg_test_module(module: &ast::Module) -> bool {
-    module.attrs().any(|attr| {
-        attr.simple_name().is_some_and(|name| name == "cfg")
-            && attr
-                .syntax()
-                .descendants_with_tokens()
-                .filter_map(ra_ap_syntax::NodeOrToken::into_token)
-                .any(|token| token.text() == "test")
-    })
+    module
+        .attrs()
+        .any(|attr| crate::languages::rust::is_test_attribute(&attr))
 }
 
 crate::rulewright_ast_test!(check_inline_test_module_size, {
@@ -93,6 +98,28 @@ crate::rulewright_ast_test!(check_inline_test_module_size, {
         verify_true!(v[0].message.contains("tests"))?;
 
         Ok(())
+    }
+
+    #[gtest]
+    fn zero_threshold_forbids_any_inline_body() -> Result<()> {
+        let config = crate::test_support::config_with_int_param(
+            "rust_inline_test_module_size",
+            "threshold",
+            0,
+        );
+        let check = |source: &str| {
+            crate::test_support::check_source_ast_with_config(
+                source,
+                &config,
+                check_inline_test_module_size,
+            )
+        };
+
+        verify_eq!(check("#[cfg(test)]\nmod tests {}\n").len(), 1)?;
+        verify_eq!(check("#[cfg(all(test, unix))]\nmod tests {}\n").len(), 1)?;
+        verify_true!(check("#[cfg(test)]\nmod tests;\n").is_empty())?;
+
+        verify_true!(check("#[cfg(any(test, unix))]\nmod shared {}\n").is_empty())
     }
 
     #[gtest]

@@ -238,3 +238,51 @@ fn config_with_string_params(rule: &str, params: &[(&str, &[&str])]) -> Config {
 
     cfg
 }
+
+pub(crate) fn config_with_int_param(rule: &str, name: &str, value: i64) -> Config {
+    let mut cfg = test_config();
+
+    cfg.rules.insert(
+        rule.to_owned(),
+        RuleConfig {
+            only: Vec::new(),
+            overrides: Vec::new(),
+            enabled: true,
+            ignore: Vec::new(),
+            params: BTreeMap::from([(name.to_owned(), toml::Value::Integer(value))]),
+        },
+    );
+
+    cfg
+}
+
+/// Run an AST check against `test.rs` with an explicit configuration.
+///
+/// # Panics
+///
+/// Panics when `source` is not valid Rust syntax.
+pub(crate) fn check_source_ast_with_config(
+    source: &str,
+    config: &Config,
+    check: fn(&AstCtx<'_>) -> Vec<Violation>,
+) -> Vec<Violation> {
+    let lines: Vec<&str> = source.lines().collect();
+    let file_ctx = FileCtx {
+        test_only: false,
+        rel: "test.rs",
+        path: Path::new("test.rs"),
+        package_name: None,
+        package_publishable: None,
+        lines: &lines,
+        contents: source,
+        config,
+    };
+    let ra_parse = SourceFile::parse(source, Edition::Edition2024);
+
+    assert!(ra_parse.errors().is_empty(), "test source must parse");
+    let root = ra_parse.tree();
+    let line_index = LineIndex::new(source);
+    let ast_ctx = AstCtx::new(&file_ctx, &root, &line_index, false);
+
+    check(&ast_ctx)
+}

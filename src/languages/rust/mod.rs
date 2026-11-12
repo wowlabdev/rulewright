@@ -493,7 +493,7 @@ fn is_line_rule_metadata(item: &ast::Item, rule_implementation: bool) -> bool {
     })
 }
 
-fn is_test_attribute(attr: &ast::Attr) -> bool {
+pub(crate) fn is_test_attribute(attr: &ast::Attr) -> bool {
     if attr.simple_name().as_deref() == Some("test") {
         return true;
     }
