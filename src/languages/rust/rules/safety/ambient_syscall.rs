@@ -1,7 +1,6 @@
-use std::collections::BTreeMap;
+use ra_ap_syntax::ast;
 
-use ra_ap_syntax::ast::{self, HasName};
-
+use super::super::support::Imports;
 use super::support::path_segments;
 use crate::{AstCtx, Example, Violation};
 
@@ -117,7 +116,7 @@ crate::ast_rule!(
 );
 
 fn check_ambient_syscall(ctx: &AstCtx<'_>) -> Vec<Violation> {
-    let imports = imported_paths(ctx);
+    let imports = Imports::of(ctx);
 
     ctx.nodes::<ast::CallExpr>()
         .filter(|call| !ctx.is_in_test(call))
@@ -126,7 +125,7 @@ fn check_ambient_syscall(ctx: &AstCtx<'_>) -> Vec<Violation> {
                 return None;
             };
             let path = path_expr.path()?;
-            let segments = resolve(&imports, path_segments(&path));
+            let segments = imports.resolve(path_segments(&path));
 
             is_ambient_call(&segments).then(|| {
                 ctx.violation(
@@ -140,79 +139,6 @@ fn check_ambient_syscall(ctx: &AstCtx<'_>) -> Vec<Violation> {
             })
         })
         .collect()
-}
-
-/// Map each name a `use` item binds to the path it imports; ambiguous names are dropped.
-fn imported_paths(ctx: &AstCtx<'_>) -> BTreeMap<String, Vec<String>> {
-    let mut imports = BTreeMap::<String, Option<Vec<String>>>::new();
-
-    let mut pending = ctx
-        .nodes::<ast::Use>()
-        .filter_map(|item| item.use_tree())
-        .map(|tree| (tree, Vec::new()))
-        .collect::<Vec<_>>();
-
-    while let Some((tree, prefix)) = pending.pop() {
-        let mut path = prefix;
-
-        if let Some(own) = tree.path() {
-            path.extend(path_segments(&own));
-        }
-
-        if let Some(list) = tree.use_tree_list() {
-            pending.extend(list.use_trees().map(|child| (child, path.clone())));
-        } else if tree.star_token().is_none() {
-            bind(&tree, path, &mut imports);
-        }
-    }
-
-    imports
-        .into_iter()
-        .filter_map(|(name, path)| Some((name, path?)))
-        .collect()
-}
-
-fn bind(
-    tree: &ast::UseTree,
-    mut path: Vec<String>,
-    imports: &mut BTreeMap<String, Option<Vec<String>>>,
-) {
-    if path.last().is_some_and(|last| last == "self") {
-        path.pop();
-    }
-
-    let name = match tree.rename() {
-        Some(rename) => match rename.name() {
-            Some(name) => name.text().to_string(),
-            None => return,
-        },
-
-        None => match path.last() {
-            Some(last) => last.clone(),
-            None => return,
-        },
-    };
-
-    if path.len() < 2 || name == "_" {
-        return;
-    }
-
-    let entry = imports.entry(name).or_insert_with(|| Some(path.clone()));
-
-    if entry.as_ref().is_some_and(|known| *known != path) {
-        *entry = None;
-    }
-}
-
-fn resolve(imports: &BTreeMap<String, Vec<String>>, segments: Vec<String>) -> Vec<String> {
-    let Some((first, rest)) = segments.split_first() else {
-        return segments;
-    };
-
-    match imports.get(first) {
-        Some(path) => path.iter().chain(rest).cloned().collect(),
-        None => segments,
-    }
 }
 
 fn is_ambient_call(segments: &[String]) -> bool {
