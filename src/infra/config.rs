@@ -645,6 +645,14 @@ impl Config {
                         {
                             errors.push(format!("rule `{rule}`: {error}"));
                         }
+                    } else if rule == "rust_similar_fns" && param.name == "uncompared" {
+                        if let Err(error) =
+                            crate::languages::rust::rules::api::similar_fns::validate_uncompared(
+                                &strings,
+                            )
+                        {
+                            errors.push(format!("rule `{rule}`: {error}"));
+                        }
                     } else if rule == "toml_cargo_path_deps" && param.name == "allow_in" {
                         for pattern in strings {
                             if let Err(error) = crate::glob::validate(&pattern) {

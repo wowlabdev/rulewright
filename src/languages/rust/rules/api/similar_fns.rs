@@ -34,11 +34,12 @@ const EXAMPLES: &[Example] = &[
 crate::workspace_rule!(
     similar_fns,
     "Find exact and near duplicate function bodies; full-workspace runs are authoritative.",
-    "Substantially identical functions may have drifted copies of one behavior. Share the implementation only when both functions must evolve together; keep coincidental similarity separate and suppress it with that reason.",
+    "Substantially identical functions may have drifted copies of one behavior. Share the implementation only when both functions must evolve together; keep coincidental similarity separate and suppress it with that reason. Each `uncompared` entry lists path groups separated by `|` (for example `crates/fast/** | crates/reference/**`); functions in different groups of one entry are not compared with each other, while each group is still compared within itself and with every other path.",
     Low,
     params {
         min_tokens: i64 = 40,
-        jaccard_percent: i64 = 85
+        jaccard_percent: i64 = 85,
+        uncompared: [String] = []
     },
 );
 
@@ -97,6 +98,14 @@ fn check_similar_fns(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
             let jaccard_percent =
                 ctx.config
                     .get_usize("rust_similar_fns", &SIMILAR_FNS_PARAMS[1], anchor_rel);
+            let uncompared =
+                ctx.config
+                    .get_str_array("rust_similar_fns", &SIMILAR_FNS_PARAMS[2], anchor_rel);
+
+            if is_uncompared(&uncompared, left.rel, right.rel) {
+                return None;
+            }
+
             let left_shingles = &left.record.body_shingles;
             let right_shingles = &right.record.body_shingles;
             let smaller = left_shingles.len().min(right_shingles.len());
@@ -145,6 +154,45 @@ fn check_similar_fns(ctx: &WorkspaceCtx<'_>) -> Vec<Violation> {
         .collect()
 }
 
+/// Validate `uncompared` entries: two or more nonempty `|`-separated glob groups.
+pub(crate) fn validate_uncompared(entries: &[String]) -> Result<(), String> {
+    for entry in entries {
+        let groups = entry.split('|').map(str::trim).collect::<Vec<_>>();
+
+        if groups.len() < 2 || groups.iter().any(|group| group.is_empty()) {
+            return Err(format!(
+                "invalid uncompared entry `{entry}`: expected `glob | glob` with two or more groups"
+            ));
+        }
+
+        for group in groups {
+            crate::glob::validate(group)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn is_uncompared(entries: &[String], left: &str, right: &str) -> bool {
+    entries.iter().any(|entry| {
+        let groups = entry.split('|').map(str::trim).collect::<Vec<_>>();
+        let left_groups = groups
+            .iter()
+            .map(|group| matches_ignore(left, &[*group]))
+            .collect::<Vec<_>>();
+        let right_groups = groups
+            .iter()
+            .map(|group| matches_ignore(right, &[*group]))
+            .collect::<Vec<_>>();
+        let shared = left_groups
+            .iter()
+            .zip(&right_groups)
+            .any(|(left, right)| *left && *right);
+
+        !shared && left_groups.contains(&true) && right_groups.contains(&true)
+    })
+}
+
 crate::rulewright_workspace_test!(check_similar_fns, {
     crate::example_tests!(EXAMPLES, check_similar_fns);
 
@@ -161,5 +209,69 @@ crate::rulewright_workspace_test!(check_similar_fns, {
         verify_true!(violations.is_empty())?;
 
         Ok(())
+    }
+
+    #[gtest]
+    fn uncompared_groups_skip_only_pairs_across_groups() -> Result<()> {
+        let body = EXAMPLES[0].code.split('\n').next().or_fail()?;
+        let mut config = crate::Config::generate_default(&[]);
+
+        config.rules.insert(
+            "rust_similar_fns".to_owned(),
+            crate::infra::config::RuleConfig {
+                enabled: true,
+                ignore: Vec::new(),
+                only: Vec::new(),
+                overrides: Vec::new(),
+                params: std::collections::BTreeMap::from([(
+                    "uncompared".to_owned(),
+                    toml::Value::Array(vec![toml::Value::String(
+                        "fast/** | reference/**".to_owned(),
+                    )]),
+                )]),
+            },
+        );
+        let violations = crate::testing::check_workspace_sources_with_config(
+            &[
+                ("fast/a.rs", body),
+                ("fast/b.rs", body),
+                ("reference/a.rs", body),
+                ("shared/a.rs", body),
+            ],
+            &config,
+            check_similar_fns,
+        );
+        let mut pairs = violations
+            .iter()
+            .map(|violation| {
+                let counterpart = violation.message.split("similar to ").nth(1).unwrap_or("");
+
+                (
+                    violation.rel.clone(),
+                    counterpart.split(':').next().unwrap_or("").to_owned(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        pairs.sort();
+
+        verify_eq!(
+            pairs,
+            [
+                ("fast/b.rs".to_owned(), "fast/a.rs".to_owned()),
+                ("shared/a.rs".to_owned(), "fast/a.rs".to_owned()),
+                ("shared/a.rs".to_owned(), "fast/b.rs".to_owned()),
+                ("shared/a.rs".to_owned(), "reference/a.rs".to_owned()),
+            ]
+        )
+    }
+
+    #[gtest]
+    fn uncompared_entries_need_two_valid_groups() -> Result<()> {
+        verify_true!(validate_uncompared(&["a/** | b/**".to_owned()]).is_ok())?;
+        verify_true!(validate_uncompared(&["a/**".to_owned()]).is_err())?;
+        verify_true!(validate_uncompared(&["a/** |".to_owned()]).is_err())?;
+
+        verify_true!(validate_uncompared(&["a/[x | b".to_owned()]).is_err())
     }
 });

@@ -8,7 +8,7 @@ use googletest::prelude::*;
 
 #[cfg(test)]
 mod dispatch_tests;
-mod rules;
+pub(crate) mod rules;
 pub(crate) mod test_files;
 
 use std::collections::HashSet;

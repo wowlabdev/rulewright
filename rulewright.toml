@@ -598,6 +598,7 @@ enabled = true
 ignore = []
 jaccard_percent = 85
 min_tokens = 40
+uncompared = []
 
 [rules.rust_single_item_path]
 enabled = true

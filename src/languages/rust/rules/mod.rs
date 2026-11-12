@@ -1,6 +1,6 @@
 //! Built-in Rust rule categories.
 
-mod api;
+pub(crate) mod api;
 mod complexity;
 mod correctness;
 mod docs;

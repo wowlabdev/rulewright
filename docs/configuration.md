@@ -55,7 +55,18 @@ threshold = 900
 
 Override `paths` must be nonempty and may reference named glob sets. Every override key must be a declared parameter of the correct type (`i64`, `bool`, or `[String]`); overrides cannot change enablement, ignores, or positive scopes. Unspecified values inherit the base parameters. Matching overrides apply in declaration order, with the last supplied value winning. `--parse-config` includes expanded `only` and override paths. File rules look up values at the current file; workspace rules use the finding's path for thresholds and the input file's path for record eligibility. Pair/group rules use their deterministic finding anchor for comparison thresholds.
 
-`only` and `ignore` filter workspace input records and the file inventory. The layer rule keeps the full manifest graph for resolving destination package identities while applying scopes to dependency origins.
+`only` and `ignore` filter workspace input records and the file inventory. Ignoring a path removes it from every comparison of a pair rule; to keep two areas apart while still checking each of them, `rust_similar_fns` takes `uncompared` entries:
+
+```toml
+[rules.rust_similar_fns]
+enabled = true
+ignore = []
+jaccard_percent = 85
+min_tokens = 40
+uncompared = ["crates/exec-fast/** | crates/exec-reference/**"]
+```
+
+Functions in different `|`-separated groups of one entry are not compared with each other; each group is still compared within itself and with every other path. The layer rule keeps the full manifest graph for resolving destination package identities while applying scopes to dependency origins.
 
 ## Cargo dependency policy
 
